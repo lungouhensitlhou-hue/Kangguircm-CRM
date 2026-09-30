@@ -71,10 +71,10 @@ export class ScriptedLLM implements LLM {
   name = "scripted";
   model = "claude-opus-5-5";
   jsonCalls: { system: string; prompt: string }[] = [];
-  constructor(private opts: { json?: (prompt: string, n: number) => unknown; converse?: LLM["converse"] }) {}
+  constructor(private opts: { json?: (prompt: string, n: number, system: string) => unknown; converse?: LLM["converse"] }) {}
   async json(o: any) {
     this.jsonCalls.push({ system: o.system, prompt: o.prompt });
-    const raw = this.opts.json?.(o.prompt, this.jsonCalls.length);
+    const raw = this.opts.json?.(o.prompt, this.jsonCalls.length, o.system);
     return { data: o.schema.parse(raw), usage: { tokensIn: 1000, tokensOut: 500 } };
   }
   async converse(o: any) {
@@ -97,6 +97,7 @@ export const PAGES: Record<string, string> = {
     <div>Robert Alvarez, Billing Manager</div>
     <div>Dr. Alan Weber - Medical Director</div>
     <p>Reach Jane at <a href="mailto:jane.smith@riverside-ortho.test">jane.smith@riverside-ortho.test</a></p></body></html>`,
+  "/staff-directory": `<html><body><h2>Staff Directory</h2><div>Robert Alvarez, Billing Manager</div><a href="mailto:ralvarez@riverside-ortho.test">Email Robert</a></body></html>`,
   "/contact": `<html><body>Contact us: <a href="mailto:info@riverside-ortho.test">info@riverside-ortho.test</a> Phone 512-555-0100</body></html>`,
   "/private/admin": `<html><body>secret@riverside-ortho.test</body></html>`,
 };

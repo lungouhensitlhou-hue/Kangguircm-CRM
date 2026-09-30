@@ -41,11 +41,12 @@ In development the login defaults to `admin@kangguircm.local` / `changeme` (a wa
 | Agent | Input → output |
 |---|---|
 | **discover** | NPPES registry query → deduped organizations + leads (optionally fans out research runs) |
-| **research** | Fetches the practice site (SSRF-guarded, robots.txt-respecting), extracts EHR, size, billing pain signals, decision-makers and emails. With an AI model it does structured extraction, **then a grounding pass that drops any person, email or quote not literally present in the fetched text**. Scores the lead 0-100 with reasons. |
-| **outreach** | Picks the best reachable, non-suppressed contact, drafts with the AI model (or a template if no key / invalid draft), validates (no placeholders, links, guarantees, own unsubscribe text), appends the compliance footer, queues for approval. |
+| **research** | Fetches the practice site (SSRF-guarded, robots.txt-respecting), extracts EHR, size, billing pain signals, decision-makers and emails. With an AI model it does structured extraction, **then a grounding pass that drops any person, email or quote not literally present in the fetched text**. **Deep research:** if the first pass is thin (low confidence or no reachable decision-maker) the model runs a tool loop (search, fetch pages, submit findings) with a step budget; its answer is grounded against everything it actually fetched. Found addresses get a mail-server (MX) check. Scores the lead 0-100 with reasons. |
+| **outreach** | Picks the best reachable, non-suppressed contact, drafts with the AI model (or a template if no key / invalid draft), shows it examples of past emails that earned replies (same specialty first), has a **critic pass** score and rewrite weak drafts, validates (no placeholders, links, guarantees, own unsubscribe text), appends the compliance footer, queues for approval. |
 | **send** | Rechecks suppression, sender identity, send window (timezone, weekdays), daily cap; sends with RFC 8058 `List-Unsubscribe` headers; moves the lead to *Contacted*. |
+| **reply** | Runs on every inbound reply: classifies it (interested, question, referral, not now, not interested, out of office), updates the pipeline (not interested → Lost, not now → check back in 90 days), adds referred people as contacts (address must literally appear in the reply), and drafts a response into Approvals. Out-of-office auto-replies are logged without stopping the sequence. |
 | **sweep** | Every minute: reclaims dead runs, re-queues approved sends, drafts due follow-ups (default day 3 and 7, stops on reply). |
-| **chat** | Tool-use loop over the CRM (search, inspect, stats, start discovery/research/draft, move stage, notes). **It has no send tool.** Without any AI key a rule-based command interpreter handles `stats`, `find`, `research`, `draft`, `discover`, `approvals`. |
+| **chat** | Tool-use loop over the CRM (search, inspect, stats, replies, start discovery/research/draft, move stage, notes). **It has no send tool.** Without any AI key a rule-based command interpreter handles `stats`, `find`, `research`, `draft`, `discover`, `approvals`. |
 
 ## Safety and compliance built in
 
@@ -68,7 +69,7 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 95 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm test            # 114 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
 npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
@@ -85,7 +86,7 @@ Put keys in the environment of the **web and worker** (see `.env.example`). The 
 | **Website search** | Brave, Tavily, Serper, SerpAPI; none = leads need a website already |
 | **Lead source** | NPPES registry (free, no key) |
 
-Notes: `AGENT_MODEL` picks the model (Claude default `claude-opus-5-5`; other providers' built-in defaults are just starting points, so set yours). Set `LLM_PRICE_IN` / `LLM_PRICE_OUT` (USD per million tokens) to see cost per run for non-Claude models. Smaller models make more extraction mistakes: the grounding check and draft validator catch fabricated facts and rule-breaking drafts, but evaluate any new model on ~20 real practices before trusting it. Other settings: `WORKER_CONCURRENCY`, `INBOUND_WEBHOOK_SECRET`. `ALLOW_PRIVATE_FETCH=1` and `NPPES_BASE_URL` exist for tests only; never enable the former in production.
+Notes: `AGENT_MODEL` picks the model (Claude default `claude-opus-5-5`; other providers' built-in defaults are just starting points, so set yours). Set `LLM_PRICE_IN` / `LLM_PRICE_OUT` (USD per million tokens) to see cost per run for non-Claude models. Smaller models make more extraction mistakes: the grounding check and draft validator catch fabricated facts and rule-breaking drafts, but evaluate any new model on ~20 real practices before trusting it. `AGENT_MODEL_FAST` routes bulk extraction and critique to a cheaper model of the same provider. Switches: `AGENT_DEEP_RESEARCH=off`, `AGENT_CRITIC=off`, `SKIP_MX_CHECK=1`. Other settings: `WORKER_CONCURRENCY`, `INBOUND_WEBHOOK_SECRET`. `ALLOW_PRIVATE_FETCH=1` and `NPPES_BASE_URL` exist for tests only; never enable the former in production.
 
 ## Known limits / next steps
 

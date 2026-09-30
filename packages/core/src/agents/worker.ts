@@ -9,6 +9,7 @@ import { discoverHandler } from "./discover";
 import { sweepHandler } from "./sweep";
 import { chatHandler } from "./chat";
 import { smokeHandler } from "./smoke";
+import { replyHandler } from "./reply";
 import type { AgentRun, RunKind } from "../types";
 
 export const HANDLERS: Record<RunKind, Handler> = {
@@ -19,6 +20,7 @@ export const HANDLERS: Record<RunKind, Handler> = {
   chat: chatHandler,
   sweep: sweepHandler,
   smoke: smokeHandler,
+  reply: replyHandler,
 };
 
 /** Execute one claimed run to completion (or scheduled retry). Never throws. */

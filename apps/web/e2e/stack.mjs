@@ -51,7 +51,7 @@ const env = {
   INBOUND_WEBHOOK_SECRET: "e2e-inbound-secret", INSECURE_COOKIES: "1",
   ANTHROPIC_API_KEY: "", SMTP_URL: "", BRAVE_API_KEY: "",
   LLM_PROVIDER: "custom", LLM_BASE_URL: `http://127.0.0.1:${FIX}/v1`, AGENT_MODEL: "fake-model", LLM_API_KEY: "fake-key",
-  WORKER_POLL_MS: "200", NODE_ENV: "production", PORT: String(WEB),
+  WORKER_POLL_MS: "200", SKIP_MX_CHECK: "1", NODE_ENV: "production", PORT: String(WEB),
 };
 const admin = DB.replace(/\/[^/]+$/, "/postgres");
 try { execFileSync("psql", [admin, "-c", "DROP DATABASE IF EXISTS rcm_e2e WITH (FORCE)"], { stdio: "ignore" }); } catch {}

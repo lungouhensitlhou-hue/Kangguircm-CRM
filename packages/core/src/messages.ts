@@ -3,6 +3,8 @@ import { audit, getSettings } from "./settings";
 import { assembleBody, hasUnsubscribeIntent, isSuppressed, senderReady, suppress, normalizeEmail } from "./compliance";
 import { queueSend } from "./agents/send";
 import { setStage } from "./leads";
+import { enqueueRun } from "./queue";
+import { isAutoReply } from "./agents/reply";
 import type { Message } from "./types";
 
 export async function listMessages(opts: { status?: string; leadId?: string; limit?: number } = {}) {
@@ -75,8 +77,9 @@ export async function unsubscribeByToken(token: string): Promise<{ ok: boolean; 
 /**
  * Record an inbound reply (from an inbound-email webhook). Matches the sender to a known contact,
  * stops further sequence steps, and honors opt-out language by suppressing the address.
+ * Auto-replies (out of office) are stored but do NOT stop the sequence or count as a reply.
  */
-export async function recordInbound(input: { from: string; subject?: string; body: string }): Promise<{ matched: boolean; suppressed: boolean; leadId?: string }> {
+export async function recordInbound(input: { from: string; subject?: string; body: string }): Promise<{ matched: boolean; suppressed: boolean; leadId?: string; messageId?: string; auto?: boolean }> {
   const email = normalizeEmail(input.from.replace(/^.*<([^>]+)>.*$/, "$1"));
   const contact = await queryOne<{ id: string; organization_id: string }>(
     "SELECT id, organization_id FROM contacts WHERE lower(email) = $1 LIMIT 1",
@@ -90,15 +93,19 @@ export async function recordInbound(input: { from: string; subject?: string; bod
          WHERE o.website ILIKE $1 ORDER BY l.updated_at DESC LIMIT 1`,
         [`%${domain}%`],
       );
-  const optOut = hasUnsubscribeIntent(`${input.subject ?? ""}\n${input.body}`);
+  const subject = (input.subject ?? "").slice(0, 300);
+  const auto = isAutoReply(subject, input.body);
+  const optOut = !auto && hasUnsubscribeIntent(`${subject}\n${input.body}`);
   if (optOut) await suppress(email, "reply-opt-out");
   if (!lead) return { matched: false, suppressed: optOut };
-  await query(
-    "INSERT INTO messages (lead_id, contact_id, direction, to_email, subject, body, status) VALUES ($1,$2,'inbound',$3,$4,$5,'received')",
-    [lead.id, contact?.id ?? null, email, (input.subject ?? "").slice(0, 300), input.body.slice(0, 20000)],
+  const msg = await queryOne<{ id: string }>(
+    "INSERT INTO messages (lead_id, contact_id, direction, to_email, subject, body, status, classification) VALUES ($1,$2,'inbound',$3,$4,$5,'received',$6) RETURNING id",
+    [lead.id, contact?.id ?? null, email, subject, input.body.slice(0, 20000), auto ? "out_of_office" : null],
   );
+  if (auto) return { matched: true, suppressed: false, leadId: lead.id, messageId: msg!.id, auto: true };
   // Stop the sequence: cancel anything unsent.
   await query("UPDATE messages SET status = 'cancelled', error = 'lead replied' WHERE lead_id = $1 AND direction = 'outbound' AND status IN ('draft','approved')", [lead.id]);
   await setStage(lead.id, optOut ? "disqualified" : "replied", "inbound");
-  return { matched: true, suppressed: optOut, leadId: lead.id };
+  if (!optOut) await enqueueRun({ kind: "reply", leadId: lead.id, input: { messageId: msg!.id }, idempotencyKey: `reply:${msg!.id}`, createdBy: "inbound" });
+  return { matched: true, suppressed: optOut, leadId: lead.id, messageId: msg!.id };
 }

@@ -34,6 +34,20 @@ export function respond(body) {
       }),
     });
   }
+  if (/triage replies/.test(system)) {
+    return reply({
+      role: "assistant",
+      content: JSON.stringify({
+        label: "interested",
+        summary: "Wants a call on Thursday.",
+        referral: null,
+        suggested_reply: "Hi Jane,\n\nThank you for the quick reply. I am happy to find a time on Thursday that suits you, and I can share a short overview of how we support orthopedic billing beforehand if that helps. Would the afternoon work?\n\nBest,\nSam",
+      }),
+    });
+  }
+  if (/demanding editor/.test(system)) {
+    return reply({ role: "assistant", content: JSON.stringify({ score: 9, issues: [], revised: null }) });
+  }
   if (/cold emails/.test(system)) {
     return reply({
       role: "assistant",

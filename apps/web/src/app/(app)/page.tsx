@@ -7,11 +7,12 @@ import { ago } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  const [stats, runs, top, settings] = await Promise.all([
+  const [stats, runs, top, settings, replies] = await Promise.all([
     pipelineStats(),
     listRuns({ limit: 8 }),
     query("SELECT l.id, l.score, l.stage, o.name, o.specialty, o.city, o.state FROM leads l JOIN organizations o ON o.id = l.organization_id WHERE l.stage IN ('researched','outreach_drafted') ORDER BY l.score DESC LIMIT 6"),
     getSettings(),
+    query<any>("SELECT m.id, m.lead_id, m.classification, m.meta, m.created_at, o.name FROM messages m JOIN leads l ON l.id = m.lead_id JOIN organizations o ON o.id = l.organization_id WHERE m.direction = 'inbound' ORDER BY m.created_at DESC LIMIT 6"),
   ]);
   const ready = senderReady(settings);
   const integ = integrationStatus();
@@ -48,6 +49,14 @@ export default async function Dashboard() {
             ))}
           </ul>
         </div>
+      </div>
+      <div className="card" style={{ marginTop: 14 }}>
+        <h2>Recent replies</h2>
+        {replies.length === 0 ? <div className="muted">No replies yet.</div> : (
+          <ul className="plain">{replies.map((r: any) => (
+            <li key={r.id}><Link href={`/leads/${r.lead_id}`}>{r.name}</Link> <span className={`badge ${r.classification === "interested" || r.classification === "question" || r.classification === "referral" ? "ok" : r.classification === "not_interested" ? "bad" : "warn"}`}>{(r.classification ?? "new").replace("_", " ")}</span> <span className="muted small">{r.meta?.summary ?? ""} · {ago(r.created_at)}</span></li>
+          ))}</ul>
+        )}
       </div>
       <div className="card" style={{ marginTop: 14 }}>
         <h2>Best researched leads</h2>

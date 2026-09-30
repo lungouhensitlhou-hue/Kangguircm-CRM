@@ -26,6 +26,7 @@ export const CHAT_TOOLS: ToolSpec[] = [
   { name: "draft_outreach", description: "Queue the outreach agent to draft an email for a lead. Lands in Approvals; never sends.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "move_stage", description: "Move a lead to a pipeline stage.", input_schema: obj({ lead_id: { type: "string" }, stage: { type: "string", enum: [...STAGES] } }, ["lead_id", "stage"]) },
   { name: "add_note", description: "Append a note to a lead.", input_schema: obj({ lead_id: { type: "string" }, note: { type: "string" } }, ["lead_id", "note"]) },
+  { name: "list_recent_replies", description: "Recent inbound replies with AI classification (interested, question, referral, not_now, not_interested, out_of_office) and summary.", input_schema: obj({ limit: { type: "number" } }) },
   { name: "list_pending_approvals", description: "Outreach drafts awaiting human approval.", input_schema: obj({}) },
 ];
 
@@ -86,6 +87,10 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
       out = { ok: true };
       break;
     }
+    case "list_recent_replies": {
+      out = await query("SELECT l.id AS lead_id, o.name AS practice, m.to_email AS from_email, m.classification, m.meta->>'summary' AS summary, m.created_at FROM messages m JOIN leads l ON l.id = m.lead_id JOIN organizations o ON o.id = l.organization_id WHERE m.direction = 'inbound' ORDER BY m.created_at DESC LIMIT $1", [Math.min(Number(i.limit ?? 10), 25)]);
+      break;
+    }
     case "list_pending_approvals": {
       out = await query("SELECT m.id, o.name AS practice, m.to_email, m.subject, m.step FROM messages m JOIN leads l ON l.id = m.lead_id JOIN organizations o ON o.id = l.organization_id WHERE m.status = 'draft' ORDER BY m.created_at DESC LIMIT 25");
       break;
@@ -100,10 +105,14 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
 export async function ruleBasedChat(ctx: RunContext, text: string): Promise<string> {
   const t = text.trim().toLowerCase();
   const call = (n: string, i: any) => runCrmTool(ctx, n, i).then((s) => JSON.parse(s));
-  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
+  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\n- `replies` – recent replies and how they were classified\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
   if (/^(stats|pipeline|status)/.test(t)) {
     const s = await call("pipeline_stats", {});
     return `${s.total} leads. ` + Object.entries(s.byStage).filter(([, n]) => n).map(([k, n]) => `${STAGE_LABELS[k as Stage]}: ${n}`).join(", ") + `. Sent ${s.messages.sent}, replies ${s.messages.replies} (${s.replyRate}%), ${s.messages.drafts} draft(s) awaiting approval.`;
+  }
+  if (/^(replies|inbox)/.test(t)) {
+    const rows = await call("list_recent_replies", {});
+    return rows.length ? rows.map((r: any) => `- ${r.practice}: ${(r.classification ?? "unclassified").replace("_", " ")}${r.summary ? ` — ${r.summary}` : ""}`).join("\n") : "No replies yet.";
   }
   if (/^approvals?/.test(t)) {
     const rows = await call("list_pending_approvals", {});

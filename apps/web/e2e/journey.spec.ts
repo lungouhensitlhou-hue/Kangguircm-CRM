@@ -129,6 +129,14 @@ test("research → draft → approve → send → reply → unsubscribe (full ou
   expect(await rep.json()).toMatchObject({ matched: true, suppressed: false });
   await page.reload();
   await expect(page.locator(".head .badge", { hasText: "Replied" })).toBeVisible();
+  // the reply agent classifies it, and drafts an answer for approval (never sent automatically)
+  await expect(async () => { await page.reload(); await expect(page.getByText("Wants a call on Thursday.")).toBeVisible(); }).toPass({ timeout: 30_000 });
+  await expect(page.locator(".badge.ok", { hasText: "interested" })).toBeVisible();
+  await page.goto("/approvals");
+  const replyDraft = page.getByTestId("draft").filter({ hasText: "Reply to their message" });
+  await expect(replyDraft).toHaveCount(1);
+  await expect(replyDraft.getByLabel("Message")).toHaveValue(/happy to find a time on Thursday/);
+  await page.goBack();
 
   // recipient unsubscribes via the public page (GET never unsubscribes; confirm click does)
   const anon = await page.context().browser()!.newContext();

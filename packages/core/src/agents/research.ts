@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { query, queryOne } from "../db";
 import { addContact, getContacts, getLead, setStage, normalizeWebsite } from "../leads";
+import { deepResearch, mergeExtractions } from "./deep-research";
 import { classifyDecisionMaker, detectEhr, detectPainSignals, estimateProviders, extractEmails, extractPeople, matchEmailToPerson } from "./heuristics";
 import { isGenericMailbox, isValidEmail } from "../compliance";
 import { scoreLead } from "../scoring";
@@ -90,11 +91,11 @@ export const researchHandler: Handler = async (ctx) => {
     await ctx.tool("web.fetch", { website }, { pages: pages.map((p) => p.url) });
   }
 
-  const corpus = pages.map((p) => `### ${p.url}\n${p.text}`).join("\n\n").slice(0, MAX_CHARS);
+  let corpus = pages.map((p) => `### ${p.url}\n${p.text}`).join("\n\n").slice(0, MAX_CHARS);
   const sources = pages.map((p) => ({ url: p.url, title: p.title }));
 
   // 3. Deterministic extraction (always) + LLM extraction (when configured).
-  const emails = extractEmails(corpus, pages.flatMap((p) => p.emails));
+  let emails = extractEmails(corpus, pages.flatMap((p) => p.emails));
   const people = extractPeople(corpus);
   const heur = {
     ehr: detectEhr(corpus),
@@ -115,19 +116,40 @@ export const researchHandler: Handler = async (ctx) => {
     confidence: pages.length ? Math.min(0.55, 0.2 + pages.length * 0.06 + (people.length ? 0.1 : 0)) : 0.1,
   };
 
-  if (ctx.deps.llm && corpus.length > 200) {
+  if (ctx.fast && corpus.length > 200) {
     try {
-      const { data, usage } = await ctx.deps.llm.json({
+      const { data, usage } = await ctx.fast.json({
         system: RESEARCH_SYSTEM,
         prompt: buildResearchPrompt(org, corpus),
         schema: ExtractionSchema,
       });
-      ctx.addUsage(usage);
+      ctx.addUsage(usage, ctx.fast);
       ex = groundExtraction(data, corpus);
       method = "llm";
       await ctx.log(`LLM extraction complete (${ex.decision_makers.length} decision makers, confidence ${ex.confidence})`);
     } catch (e) {
       await ctx.log(`LLM extraction failed, using heuristics: ${(e as Error).message}`, undefined, "warn");
+    }
+  }
+
+  // 3b. Deep research: if the first pass found no reachable decision-maker (or is unsure), let the model dig with tools.
+  const reachable = () => ex.decision_makers.some((d) => d.email || matchEmailToPerson(d.name, emails));
+  if (ctx.deps.llm && website && process.env.AGENT_DEEP_RESEARCH !== "off" && (ex.confidence < 0.6 || !reachable())) {
+    await ctx.log("First pass is thin; starting deep research");
+    try {
+      const deep = await deepResearch(ctx, org, website, `${ex.summary}\nKnown people: ${ex.decision_makers.map((d) => `${d.name} (${d.title})`).join("; ") || "none"}\nKnown emails: ${emails.join(", ") || "none"}`);
+      if (deep) {
+        corpus = `${corpus}\n\n${deep.corpus}`;
+        sources.push(...deep.sources.filter((s) => !sources.some((x) => x.url === s.url)));
+        emails = extractEmails(corpus, [...pages.flatMap((p) => p.emails), ...deep.emails]);
+        if (deep.findings) {
+          ex = groundExtraction(mergeExtractions(ex, deep.findings), corpus);
+          method = "llm";
+          await ctx.log(`Deep research done: ${ex.decision_makers.length} decision maker(s), confidence ${ex.confidence}`);
+        } else await ctx.log("Deep research ended without findings", undefined, "warn");
+      }
+    } catch (e) {
+      await ctx.log(`Deep research failed (${(e as Error).message}); keeping first-pass results`, undefined, "warn");
     }
   }
 
@@ -156,12 +178,21 @@ export const researchHandler: Handler = async (ctx) => {
     if (await addContact(org.id, { full_name: null, title: isGenericMailbox(e) ? "Practice inbox" : null, email: e, source: "research", source_url: sourceUrl })) contactCount++;
   }
 
+  if (ctx.deps.mxCheck) {
+    for (const c of await getContacts(org.id)) {
+      if (!c.email || c.email_status !== "unverified") continue;
+      if (!(await ctx.deps.mxCheck(c.email.split("@")[1]))) {
+        await query("UPDATE contacts SET email_status = 'invalid' WHERE id = $1", [c.id]);
+        await ctx.log(`${c.email} rejected: domain has no mail server`, undefined, "warn");
+      }
+    }
+  }
   const contacts = await getContacts(org.id);
-  const dmEmail = contacts.some((c) => c.is_decision_maker && c.email);
+  const dmEmail = contacts.some((c) => c.is_decision_maker && c.email && c.email_status !== "invalid");
   const { score, reasons } = scoreLead({
     org: { ...org, ehr: ex.ehr ?? org.ehr, size_estimate: ex.size_estimate ?? org.size_estimate, website },
     hasDecisionMakerEmail: dmEmail,
-    hasAnyContact: contacts.some((c) => c.email),
+    hasAnyContact: contacts.some((c) => c.email && c.email_status !== "invalid"),
     confidence: ex.confidence,
     painPoints: ex.pain_points.length,
   });
@@ -169,7 +200,7 @@ export const researchHandler: Handler = async (ctx) => {
   await setStage(lead.id, "researched", "agent");
   await ctx.log(`Profile saved: score ${score}, ${contactCount} contact(s), ${pages.length} page(s) read`);
 
-  if (ctx.run.input.thenOutreach && contacts.some((c) => c.email)) {
+  if (ctx.run.input.thenOutreach && contacts.some((c) => c.email && c.email_status !== "invalid")) {
     await enqueueRun({ kind: "outreach", leadId: lead.id, parentId: ctx.run.id, input: { step: 1 }, idempotencyKey: `outreach:${lead.id}:1`, createdBy: "agent" });
     await ctx.log("Queued outreach drafting");
   }

@@ -25,7 +25,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   disqualified: "Disqualified",
 };
 
-export type RunKind = "discover" | "research" | "outreach" | "send" | "chat" | "sweep" | "smoke";
+export type RunKind = "discover" | "research" | "outreach" | "send" | "chat" | "sweep" | "smoke" | "reply";
 export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export interface Organization {
@@ -103,6 +103,8 @@ export interface Message {
   body: string;
   status: "draft" | "approved" | "rejected" | "sent" | "failed" | "received" | "cancelled";
   unsub_token: string | null;
+  classification: string | null;
+  meta: Record<string, any>;
   provider: string | null;
   error: string | null;
   approved_by: string | null;

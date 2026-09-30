@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { api, useAction } from "./useApi";
 
-export interface Draft { id: string; lead_id: string; org_name: string; to_email: string; contact_name: string | null; step: number; subject: string; body: string }
+export interface Draft { id: string; lead_id: string; org_name: string; to_email: string; contact_name: string | null; step: number; subject: string; body: string; isReply?: boolean }
 
 export function ApprovalCard({ d }: { d: Draft }) {
   const a = useAction();
@@ -16,7 +16,7 @@ export function ApprovalCard({ d }: { d: Draft }) {
   return (
     <div className="card" data-testid="draft">
       <div className="head" style={{ marginBottom: 8 }}>
-        <div><Link href={`/leads/${d.lead_id}`}><strong>{d.org_name}</strong></Link> <span className="badge">Step {d.step}</span><div className="small muted">To: {d.contact_name ? `${d.contact_name} ` : ""}&lt;{d.to_email}&gt;</div></div>
+        <div><Link href={`/leads/${d.lead_id}`}><strong>{d.org_name}</strong></Link> <span className="badge">Step {d.step}</span> {d.isReply && <span className="badge info">Reply to their message</span>}<div className="small muted">To: {d.contact_name ? `${d.contact_name} ` : ""}&lt;{d.to_email}&gt;</div></div>
       </div>
       {a.error && <div className="notice err" role="alert">{a.error}</div>}
       <div className="field"><label htmlFor={`s-${d.id}`}>Subject</label><input id={`s-${d.id}`} value={subject} onChange={(e) => setSubject(e.target.value)} /></div>

@@ -16,7 +16,7 @@ export default async function Approvals() {
       {integrationStatus().deliversEmail ? null : <div className="notice warn">No email provider configured (SMTP, Resend, SendGrid, Postmark or Mailgun): approved emails are recorded as sent in <strong>dry-run</strong> mode and are not actually delivered.</div>}
       <div className="grid" style={{ marginBottom: 24 }}>
         {drafts.length === 0 && <div className="card muted">No drafts waiting. Ask the outreach agent to draft emails from a lead page or bulk from the Leads list.</div>}
-        {drafts.map((d) => <ApprovalCard key={d.id} d={{ id: d.id, lead_id: d.lead_id, org_name: d.org_name, to_email: d.to_email!, contact_name: d.contact_name, step: d.step, subject: d.subject, body: d.body }} />)}
+        {drafts.map((d) => <ApprovalCard key={d.id} d={{ id: d.id, lead_id: d.lead_id, org_name: d.org_name, to_email: d.to_email!, contact_name: d.contact_name, step: d.step, subject: d.subject, body: d.body, isReply: !!d.meta?.replyTo }} />)}
       </div>
       <div className="card">
         <h2>Recent email activity</h2>

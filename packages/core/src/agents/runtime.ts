@@ -5,9 +5,14 @@ import { costUsd } from "../providers/llm";
 import type { NpiClient } from "../providers/npi";
 import type { WebTools } from "../providers/web";
 import type { Mailer } from "../providers/mailer";
+import type { MxCheck } from "../providers/mx";
 
 export interface Deps {
   llm: LLM | null;
+  /** Cheaper/faster model for bulk extraction and critique. Falls back to `llm`. */
+  fastLlm?: LLM | null;
+  /** Domain can receive mail? Defaults to "yes" when omitted. */
+  mxCheck?: MxCheck;
   npi: NpiClient;
   web: WebTools;
   mailer: Mailer;
@@ -31,10 +36,13 @@ export class RunContext {
   async progress(message: string, data?: unknown) { await emitEvent(this.run.id, "progress", message, data); }
   async tool(name: string, input: unknown, result: unknown) { await emitEvent(this.run.id, "tool", name, { input, result }); }
 
-  addUsage(u: Usage) {
+  /** The model used for bulk/cheap steps (extraction, critique). */
+  get fast(): LLM | null { return this.deps.fastLlm ?? this.deps.llm; }
+
+  addUsage(u: Usage, llm: LLM | null = this.deps.llm) {
     this.usage.tokensIn += u.tokensIn;
     this.usage.tokensOut += u.tokensOut;
-    const model = (this.deps.llm as any)?.model as string | undefined;
+    const model = (llm as any)?.model as string | undefined;
     if (model) this.costUsd += costUsd(model, u);
   }
 
