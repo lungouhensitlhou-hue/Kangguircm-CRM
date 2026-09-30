@@ -22,9 +22,15 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@sendgrid/eventwebhook": "^8.0.0",
+    "@sendgrid/mail": "^8.1.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^6.4.0",
     "@types/pg": "^8.11.0",
+    "openai": "^7.25.0",
+    "postmark": "^5.1.0",
+    "resend": "^6.31.0",
+    "svix": "^2.6.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

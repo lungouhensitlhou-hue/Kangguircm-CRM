@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { applyEmailEvent, parseMailgun, parsePostmark, parseResend, parseSendGrid, verifyMailgun, verifyPostmark, verifyResend, verifySendGrid, verifySharedSecret, type NormalizedEvent } from "@rcm/core";
+import { applyEmailEvent, isReplayedMailgunToken, parseMailgun, parsePostmark, parseResend, parseSendGrid, verifyMailgun, verifyPostmark, verifyResend, verifySendGrid, verifySharedSecret, type NormalizedEvent } from "@rcm/core";
 
 export const dynamic = "force-dynamic";
 const env = (k: string) => process.env[k]?.trim() ?? "";
@@ -25,7 +25,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
     case "resend": ok ||= verifyResend(headers, raw, env("RESEND_WEBHOOK_SECRET")); events = parseResend(body, headers["svix-id"]); break;
     case "sendgrid": ok ||= verifySendGrid(headers, raw, env("SENDGRID_WEBHOOK_PUBLIC_KEY")); events = parseSendGrid(body); break;
     case "postmark": ok ||= verifyPostmark(headers, env("POSTMARK_WEBHOOK_USER"), env("POSTMARK_WEBHOOK_PASSWORD")); events = parsePostmark(body); break;
-    case "mailgun": ok ||= verifyMailgun(body, env("MAILGUN_WEBHOOK_SIGNING_KEY")); events = parseMailgun(body); break;
+    case "mailgun": {
+      // Mailgun's signature does not cover the body, so each signed token is accepted only once.
+      const native = !shared && verifyMailgun(body, env("MAILGUN_WEBHOOK_SIGNING_KEY"));
+      if (native && isReplayedMailgunToken(body)) return NextResponse.json({ ok: true, replay: true });
+      ok ||= native; events = parseMailgun(body); break;
+    }
     default: return NextResponse.json({ error: "Unknown provider" }, { status: 404 });
   }
   if (!ok) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });

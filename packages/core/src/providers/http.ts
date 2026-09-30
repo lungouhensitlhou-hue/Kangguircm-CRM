@@ -18,7 +18,7 @@ export async function postJson(url: string, headers: Record<string, string>, bod
     try {
       const res = await f(url, {
         method: "POST",
-        headers: { "content-type": "application/json", ...headers },
+        headers: { "content-type": "application/json", "user-agent": "kangguircm-crm/1.0", ...headers },
         body: typeof body === "string" ? body : JSON.stringify(body),
         signal: AbortSignal.timeout(o.timeoutMs ?? 120_000),
       });

@@ -20,8 +20,9 @@ export class GeminiLLM implements LLM {
         functionDeclarations: tools.map((t) => ({
           name: t.name,
           description: t.description,
-          // Gemini rejects an OBJECT schema with no properties, so parameterless tools omit it.
-          ...(Object.keys(t.input_schema.properties).length ? { parameters: t.input_schema } : {}),
+          // `parameters` is Gemini's own OpenAPI-style Schema (UPPERCASE types); `parametersJsonSchema` takes standard JSON Schema,
+          // which is what we generate. Parameterless tools omit it (an OBJECT schema with no properties is rejected).
+          ...(Object.keys(t.input_schema.properties).length ? { parametersJsonSchema: t.input_schema } : {}),
         })),
       }];
     }
@@ -34,7 +35,7 @@ export class GeminiLLM implements LLM {
     const parts: any[] = cand.content?.parts ?? [];
     return {
       text: parts.filter((p) => typeof p.text === "string" && !p.thought).map((p) => p.text).join(""),
-      calls: parts.filter((p) => p.functionCall).map((p) => p.functionCall as { name: string; args?: Record<string, unknown> }),
+      calls: parts.filter((p) => p.functionCall).map((p) => p.functionCall as { id?: string; name: string; args?: Record<string, unknown> }),
       raw: cand.content,
       blocked: cand.finishReason === "SAFETY" || cand.finishReason === "PROHIBITED_CONTENT",
       usage,
@@ -73,9 +74,10 @@ export class GeminiLLM implements LLM {
       contents.push(r.raw);
       const responses: any[] = [];
       for (const c of r.calls) {
+        // Gemini convention: put the tool's output under "output" and failures under "error".
         let result: unknown;
-        try { result = { result: await o.onTool(c.name, c.args ?? {}) }; } catch (e) { result = { error: (e as Error).message }; }
-        responses.push({ functionResponse: { name: c.name, response: result } });
+        try { result = { output: await o.onTool(c.name, c.args ?? {}) }; } catch (e) { result = { error: (e as Error).message }; }
+        responses.push({ functionResponse: { ...(c.id ? { id: c.id } : {}), name: c.name, response: result } });
       }
       contents.push({ role: "user", parts: responses });
     }

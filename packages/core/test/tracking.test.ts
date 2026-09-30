@@ -6,7 +6,7 @@ import { processOne } from "../src/agents/worker";
 import { addContact, getLead, pipelineStats, setStage, upsertLead } from "../src/leads";
 import { isSuppressed } from "../src/compliance";
 import { applyEmailEvent, emailStats, openPixelUrl, recordOpen, textToHtml, GIF_1X1 } from "../src/tracking";
-import { parseMailgun, parsePostmark, parseResend, parseSendGrid, verifyMailgun, verifyPostmark, verifyResend, verifySendGrid, verifySharedSecret } from "../src/providers/email-events";
+import { isReplayedMailgunToken, parseMailgun, parsePostmark, parseResend, parseSendGrid, verifyMailgun, verifyPostmark, verifyResend, verifySendGrid, verifySharedSecret } from "../src/providers/email-events";
 import { MailgunMailer, PostmarkMailer, ResendMailer, SendGridMailer } from "../src/providers/mailer";
 import { saveSettings } from "../src/settings";
 import { makeDeps, readySettings, resetDb, setupDb, teardownDb } from "./helpers";
@@ -43,7 +43,19 @@ describe("webhook signature verification", () => {
     const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ type: "spki", format: "der" }).toString("base64");
     expect(verifySendGrid(h, body, other)).toBe(false);
     expect(verifySendGrid(h, body, "not-a-key")).toBe(false);
-    expect(verifySendGrid({ ...h, "X-Twilio-Email-Event-Webhook-Timestamp": String(Number(ts) - 4000) }, body, pubB64)).toBe(false);
+    const oldTs = String(Number(ts) - 3600 * 5); // provider retries can be hours old: still accepted
+    const oldSig = crypto.sign("sha256", Buffer.from(oldTs + body), privateKey).toString("base64");
+    expect(verifySendGrid({ "X-Twilio-Email-Event-Webhook-Signature": oldSig, "X-Twilio-Email-Event-Webhook-Timestamp": oldTs }, body, pubB64)).toBe(true);
+    const ancient = String(Number(ts) - 3600 * 30);
+    expect(verifySendGrid({ "X-Twilio-Email-Event-Webhook-Signature": crypto.sign("sha256", Buffer.from(ancient + body), privateKey).toString("base64"), "X-Twilio-Email-Event-Webhook-Timestamp": ancient }, body, pubB64)).toBe(false);
+  });
+
+  it("Mailgun tokens are single-use (signature does not cover the body)", () => {
+    const b = { signature: { token: "tok-" + Math.random() } };
+    expect(isReplayedMailgunToken(b)).toBe(false);
+    expect(isReplayedMailgunToken(b)).toBe(true);
+    expect(isReplayedMailgunToken({})).toBe(true);
+    expect(isReplayedMailgunToken(b, Date.now() + 20 * 60_000)).toBe(false); // forgotten after the retention window
   });
 
   it("Mailgun (HMAC), Postmark (basic auth), shared secret", () => {
@@ -68,6 +80,9 @@ describe("provider payload parsing", () => {
     const e = parseResend({ type: "email.bounced", created_at: "2026-09-30T10:00:00Z", data: { email_id: "re_1", to: ["a@b.test"], bounce: { type: "Permanent", message: "mailbox not found" } } }, "evt_1")[0];
     expect(e).toMatchObject({ provider: "resend", type: "bounced_hard", providerMessageId: "re_1", email: "a@b.test", detail: "mailbox not found", eventId: "evt_1" });
     expect(parseResend({ type: "email.bounced", data: { email_id: "x", to: ["a@b.test"], bounce: { type: "Transient" } } })[0].type).toBe("bounced_soft");
+    expect(parseResend({ type: "email.bounced", data: { email_id: "x", to: ["a@b.test"], bounce: { type: "Undetermined" } } })[0].type).toBe("bounced_soft"); // only Permanent is hard
+    expect(parseResend({ type: "email.suppressed", data: { email_id: "x", to: ["a@b.test"], suppressed: { type: "OnAccountSuppressionList", message: "on suppression list" } } })[0]).toMatchObject({ type: "bounced_hard", detail: "on suppression list" });
+    expect(parseResend({ type: "email.failed", data: { email_id: "x", to: ["a@b.test"], failed: { reason: "quota" } } })[0]).toMatchObject({ type: "bounced_soft", detail: "quota" });
     expect(parseResend({ type: "email.complained", data: { email_id: "x", to: ["a@b.test"] } })[0].type).toBe("complained");
     expect(parseResend({ type: "email.sent", data: {} })).toEqual([]);
   });
@@ -88,11 +103,17 @@ describe("provider payload parsing", () => {
     expect(parsePostmark({ RecordType: "Bounce", Type: "Transient", MessageID: "pm-1", Email: "a@b.test" })[0].type).toBe("bounced_soft");
     expect(parsePostmark({ RecordType: "Bounce", Type: "SpamNotification", MessageID: "pm-1", Email: "a@b.test" })[0].type).toBe("complained");
     expect(parsePostmark({ RecordType: "SpamComplaint", MessageID: "pm-1", Email: "a@b.test" })[0].type).toBe("complained");
+    for (const t of ["Blocked", "DnsError", "SoftBounce", "AutoResponder", "Unknown"]) expect(parsePostmark({ RecordType: "Bounce", Type: t, MessageID: "pm", Email: "a@b.test" })[0].type).toBe("bounced_soft"); // says nothing about the mailbox itself
+    expect(parsePostmark({ RecordType: "Bounce", Type: "Unsubscribe", MessageID: "pm", Email: "a@b.test" })[0].type).toBe("complained");
+    for (const t of ["HardBounce", "BadEmailAddress", "ManuallyDeactivated"]) expect(parsePostmark({ RecordType: "Bounce", Type: t, MessageID: "pm", Email: "a@b.test" })[0].type).toBe("bounced_hard");
   });
   it("Mailgun (message-id without angle brackets)", () => {
     const e = parseMailgun({ "event-data": { event: "failed", severity: "permanent", id: "ev1", timestamp: 1790000000, recipient: "a@b.test", message: { headers: { "message-id": "abc@mg.test" } }, "delivery-status": { message: "550 mailbox unavailable" } } })[0];
     expect(e).toMatchObject({ type: "bounced_hard", providerMessageId: "abc@mg.test", detail: "550 mailbox unavailable" });
     expect(parseMailgun({ "event-data": { event: "failed", severity: "temporary", recipient: "a@b.test", message: { headers: {} } } })[0].type).toBe("bounced_soft");
+    expect(parseMailgun({ "event-data": { event: "unsubscribed", recipient: "a@b.test", message: { headers: {} } } })[0].type).toBe("complained");
+    expect(parseMailgun({ "event-data": { event: "rejected", reject: { reason: "Not delivering to previously bounced address" }, recipient: "a@b.test", message: { headers: {} } } })[0].type).toBe("bounced_hard");
+    expect(parseMailgun({ "event-data": { event: "rejected", reject: { reason: "Sandbox subdomains are for test purposes only" }, recipient: "a@b.test", message: { headers: {} } } })[0].type).toBe("bounced_soft");
     expect(parseMailgun({})).toEqual([]);
   });
 });
@@ -221,7 +242,7 @@ describe("mailers send the HTML twin without turning on provider-side tracking",
   it("all providers", async () => {
     let c = capture(); await new ResendMailer("k", { fetchImpl: c.f, retryDelaysMs: [] }).send(mail); expect(c.calls[0].b.html).toBe("<p>H</p>");
     c = capture(); await new SendGridMailer("k", { fetchImpl: c.f, retryDelaysMs: [] }).send(mail); expect(c.calls[0].b.content.map((x: any) => x.type)).toEqual(["text/plain", "text/html"]); expect(c.calls[0].b.tracking_settings.open_tracking.enable).toBe(false);
-    c = capture(); await new PostmarkMailer("k", "outbound", { fetchImpl: c.f, retryDelaysMs: [] }).send(mail); expect(c.calls[0].b.HtmlBody).toBe("<p>H</p>"); expect(c.calls[0].b.TrackOpens).toBe(false);
+    c = capture(); await new PostmarkMailer("k", "outbound", { fetchImpl: c.f, retryDelaysMs: [] }).send(mail); expect(c.calls[0].b.HtmlBody).toBe("<p>H</p>"); expect(c.calls[0].b.TrackOpens).toBe(false); expect(c.calls[0].b.TrackLinks).toBe("None");
     c = capture(); await new MailgunMailer("k", "d.test", "us", c.f).send(mail); const f = new URLSearchParams(c.calls[0].b); expect(f.get("html")).toBe("<p>H</p>"); expect(f.get("o:tracking")).toBe("no");
     c = capture(); await new ResendMailer("k", { fetchImpl: c.f, retryDelaysMs: [] }).send({ ...mail, html: undefined }); expect("html" in c.calls[0].b).toBe(false);
   });

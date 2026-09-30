@@ -125,7 +125,7 @@ describe("Gemini LLM", () => {
   });
   it("converse(): functionCall/functionResponse loop; parameterless tools omit schema", async () => {
     const m = mockFetch([
-      j({ candidates: [{ content: { role: "model", parts: [{ functionCall: { name: "pipeline_stats", args: {} } }, { functionCall: { name: "search_leads", args: { q: "x" } } }] } }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 } }),
+      j({ candidates: [{ content: { role: "model", parts: [{ functionCall: { id: "fc-1", name: "pipeline_stats", args: {} } }, { functionCall: { name: "search_leads", args: { q: "x" } } }] } }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 } }),
       j({ candidates: [{ content: { role: "model", parts: [{ text: "You have 3 leads." }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 6 } }),
     ]);
     const tools = [
@@ -136,12 +136,13 @@ describe("Gemini LLM", () => {
     expect(r.text).toBe("You have 3 leads.");
     expect(r.usage).toEqual({ tokensIn: 60, tokensOut: 11 });
     const decl = m.calls[0].body.tools[0].functionDeclarations;
-    expect(decl[0].parameters).toBeUndefined();
-    expect(decl[1].parameters.properties.q).toBeDefined();
+    expect(decl[0].parametersJsonSchema).toBeUndefined();
+    expect(decl[1].parametersJsonSchema.properties.q).toBeDefined();
+    expect(decl[1].parameters).toBeUndefined();
     expect(m.calls[0].body.contents.map((c: any) => c.role)).toEqual(["user", "model", "user"]);
     const last = m.calls[1].body.contents.at(-1);
     expect(last.role).toBe("user");
-    expect(last.parts[0].functionResponse).toEqual({ name: "pipeline_stats", response: { result: '{"total":3}' } });
+    expect(last.parts[0].functionResponse).toEqual({ id: "fc-1", name: "pipeline_stats", response: { output: '{"total":3}' } });
     expect(last.parts[1].functionResponse).toEqual({ name: "search_leads", response: { error: "nope" } });
   });
   it("reports blocked prompts", async () => {

@@ -47,21 +47,22 @@ const NO_RETRY: PostOptions = { retryDelaysMs: [] }; // a retried POST after a t
 
 export class ResendMailer implements Mailer {
   readonly name = "resend";
-  constructor(private key: string, private http: PostOptions = NO_RETRY) {}
+  constructor(private key: string, private http: PostOptions = NO_RETRY, private baseUrl = "https://api.resend.com") {}
   async send(m: OutgoingEmail) {
     const headers: Record<string, string> = { authorization: `Bearer ${this.key}` };
     if (m.idempotencyKey) headers["idempotency-key"] = m.idempotencyKey;
-    const res = await postJson("https://api.resend.com/emails", headers, { from: m.from, to: [m.to], subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), headers: m.headers }, { label: "resend", ...this.http });
+    const res = await postJson(`${this.baseUrl}/emails`, headers, { from: m.from, to: [m.to], subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), headers: m.headers }, { label: "resend", ...this.http });
     return { id: String(((await res.json()) as any).id) };
   }
 }
 
 export class SendGridMailer implements Mailer {
   readonly name = "sendgrid";
-  constructor(private key: string, private http: PostOptions = NO_RETRY) {}
+  /** `baseUrl` defaults to api.sendgrid.com; EU-regional accounts must use https://api.eu.sendgrid.com (SENDGRID_REGION=eu). */
+  constructor(private key: string, private http: PostOptions = NO_RETRY, private baseUrl = "https://api.sendgrid.com") {}
   async send(m: OutgoingEmail) {
     const from = splitAddress(m.from);
-    const res = await postJson("https://api.sendgrid.com/v3/mail/send", { authorization: `Bearer ${this.key}` }, {
+    const res = await postJson(`${this.baseUrl}/v3/mail/send`, { authorization: `Bearer ${this.key}` }, {
       personalizations: [{ to: [{ email: m.to }] }],
       from: { email: from.email, ...(from.name ? { name: from.name } : {}) },
       subject: m.subject,
@@ -75,10 +76,11 @@ export class SendGridMailer implements Mailer {
 
 export class PostmarkMailer implements Mailer {
   readonly name = "postmark";
-  constructor(private token: string, private stream = "outbound", private http: PostOptions = NO_RETRY) {}
+  constructor(private token: string, private stream = "outbound", private http: PostOptions = NO_RETRY, private baseUrl = "https://api.postmarkapp.com") {}
   async send(m: OutgoingEmail) {
-    const res = await postJson("https://api.postmarkapp.com/email", { "x-postmark-server-token": this.token, accept: "application/json" }, {
-      From: m.from, To: m.to, Subject: m.subject, TextBody: m.text, ...(m.html ? { HtmlBody: m.html } : {}), MessageStream: this.stream, TrackOpens: false,
+    const res = await postJson(`${this.baseUrl}/email`, { "x-postmark-server-token": this.token, accept: "application/json" }, {
+      From: m.from, To: m.to, Subject: m.subject, TextBody: m.text, ...(m.html ? { HtmlBody: m.html } : {}), MessageStream: this.stream, TrackOpens: false, TrackLinks: "None", // link tracking would rewrite the unsubscribe URL
+      
       Headers: Object.entries(m.headers ?? {}).map(([Name, Value]) => ({ Name, Value })),
     }, { label: "postmark", ...this.http });
     return { id: String(((await res.json()) as any).MessageID) };
@@ -124,7 +126,7 @@ export function mailerFromEnv(env: Env = process.env): Mailer {
   switch (p) {
     case "dry-run": return new DryRunMailer();
     case "resend": return new ResendMailer(need("RESEND_API_KEY"));
-    case "sendgrid": return new SendGridMailer(need("SENDGRID_API_KEY"));
+    case "sendgrid": return new SendGridMailer(need("SENDGRID_API_KEY"), NO_RETRY, env.SENDGRID_REGION === "eu" ? "https://api.eu.sendgrid.com" : undefined);
     case "postmark": return new PostmarkMailer(need("POSTMARK_SERVER_TOKEN"), env.POSTMARK_MESSAGE_STREAM || "outbound");
     case "mailgun": return new MailgunMailer(need("MAILGUN_API_KEY"), need("MAILGUN_DOMAIN"), env.MAILGUN_REGION === "eu" ? "eu" : "us");
     case "smtp": return new SmtpMailer(need("SMTP_URL"));

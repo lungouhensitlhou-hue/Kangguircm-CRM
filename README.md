@@ -69,7 +69,7 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 131 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm test            # 140 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
 npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
@@ -77,9 +77,20 @@ CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service
 
 ## Delivery and open tracking
 
-- **Delivered / bounced / spam complaints** come from your email provider's webhooks (Resend, SendGrid, Postmark, Mailgun; not plain SMTP). Point the webhook at `/api/webhooks/email/<provider>` and set the matching secret from `.env.example`; unsigned requests are rejected. A hard bounce marks the contact bounced and cancels unsent drafts to it; a spam complaint suppresses the address and disqualifies the lead. Verification follows each vendor's documented scheme and is tested with locally generated signatures, not against the live vendors.
+- **Delivered / bounced / spam complaints** come from your email provider's webhooks (Resend, SendGrid, Postmark, Mailgun; not plain SMTP). Point the webhook at `/api/webhooks/email/<provider>` and set the matching secret from `.env.example`; unsigned requests are rejected. A hard bounce marks the contact bounced and cancels unsent drafts to it; a spam complaint suppresses the address and disqualifies the lead. Verification follows each vendor's documented scheme and is tested against the vendors' own official libraries (see below). Mailgun's signature does not cover the request body, so each token is accepted once. Provider-side link/open tracking is explicitly disabled on sends (link tracking would rewrite the unsubscribe URL).
 - **Opens (optional, off by default)**: Settings → "Track email opens". Adds a self-hosted 1px image and an HTML twin of each email; works with any provider including SMTP. It is approximate: opens within 20 s of sending and known scanner user agents are not counted, but Apple Mail/Gmail image preloading can still inflate counts, image-blocking clients are missed, and tracking can lower cold-email inbox placement. Provider-side open/click tracking stays disabled so nothing is double counted.
 - Replies remain the only reliable "they read it" signal.
+
+## How the integrations were verified
+
+The sandbox that built this cannot reach the vendors' live APIs, so instead of trusting memory, each integration was checked against the vendors' **own official packages** (dev-only test dependencies) in `packages/core/test/vendor-oracle.test.ts`:
+
+- **Webhook signatures:** signed with the official `svix` library (Resend) and checked with the official `@sendgrid/eventwebhook` verifier; our verifiers accept exactly what they produce and reject tampering.
+- **Webhook payloads:** test fixtures are typed with the vendors' own TypeScript types (`resend`, `postmark`).
+- **Outgoing requests:** what the official Resend, Postmark, SendGrid and OpenAI SDKs put on the wire (path, auth header, JSON body) is captured and compared with ours; they are identical.
+- Mailgun, Gemini, Anthropic, NPPES and the search APIs were checked against their SDK type definitions, current docs and search results; Gemini tool parameters use the documented `parametersJsonSchema` field.
+
+What this cannot prove: your account-specific settings (verified sending domain, plan limits, model access). Run `npm run live:check` with your real keys before going live.
 
 ## Bring your own keys
 
