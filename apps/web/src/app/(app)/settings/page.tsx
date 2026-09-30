@@ -1,4 +1,4 @@
-import { SUPPORTED_EMAIL_PROVIDERS, SUPPORTED_LLM_PROVIDERS, SUPPORTED_SEARCH_PROVIDERS, getSettings, integrationStatus, query, senderReady } from "@rcm/core";
+import { baseUrl, SUPPORTED_EMAIL_PROVIDERS, SUPPORTED_LLM_PROVIDERS, SUPPORTED_SEARCH_PROVIDERS, getSettings, integrationStatus, query, senderReady } from "@rcm/core";
 import { SettingsForm, Suppressions } from "@/components/SettingsForm";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,12 @@ export default async function SettingsPage() {
               <tr><td>Inbound replies</td><td>{integ.inbound ? <span className="badge ok">webhook ready</span> : <span className="badge warn">INBOUND_WEBHOOK_SECRET unset</span>}</td></tr>
               <tr><td>Lead source</td><td><span className="badge ok">NPPES registry</span></td></tr>
             </tbody></table>
+            {integ.deliversEmail && integ.email !== "smtp" && (
+              <div className="small" style={{ marginTop: 10 }}>
+                <strong>Delivery &amp; bounce events:</strong> set your {integ.email} webhook to <code>{baseUrl()}/api/webhooks/email/{integ.email}</code> (delivered, bounced, complained). It is rejected unless signed; see the README for the matching secret variable.
+              </div>
+            )}
+            {integ.email === "smtp" && <div className="small muted" style={{ marginTop: 10 }}>Plain SMTP cannot report delivery or bounces. Use Resend, SendGrid, Postmark or Mailgun for that.</div>}
             <details style={{ marginTop: 10 }}>
               <summary className="small muted">Supported providers (set the matching key in the server environment, then restart)</summary>
               <ul className="plain small">

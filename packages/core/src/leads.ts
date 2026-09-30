@@ -1,6 +1,7 @@
 import { query, queryOne, tx } from "./db";
 import { audit } from "./settings";
 import { isValidEmail, normalizeEmail } from "./compliance";
+import { emailStats } from "./tracking";
 import { STAGES, type Contact, type Lead, type Organization, type Stage } from "./types";
 
 export interface LeadRow extends Lead {
@@ -156,6 +157,7 @@ export async function updateLead(leadId: string, patch: { notes?: string; stage?
 }
 
 export async function pipelineStats() {
+  const email = await emailStats();
   const stages = await query<{ stage: string; n: number }>("SELECT stage, count(*)::int AS n FROM leads GROUP BY stage");
   const byStage = Object.fromEntries(STAGES.map((s) => [s, 0])) as Record<Stage, number>;
   for (const r of stages) byStage[r.stage as Stage] = r.n;
@@ -177,6 +179,7 @@ export async function pipelineStats() {
     byStage,
     messages: msg,
     runs,
+    email,
     replyRate: msg.sent ? Math.round((msg.replies / msg.sent) * 1000) / 10 : 0,
   };
 }

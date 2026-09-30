@@ -75,6 +75,12 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             {messages.length === 0 ? <div className="muted">No emails yet.</div> : messages.map((m) => (
               <div key={m.id} style={{ marginBottom: 14 }}>
                 <div><StatusBadge status={m.status} />{m.classification && <> <Badge kind={m.classification === "interested" || m.classification === "question" || m.classification === "referral" ? "ok" : m.classification === "not_interested" ? "bad" : "warn"}>{m.classification.replace("_", " ")}</Badge></>} <strong>{m.direction === "inbound" ? "Reply: " : `Step ${m.step}: `}{m.subject}</strong></div>
+                {m.direction === "outbound" && m.status === "sent" && (
+                  <div style={{ margin: "2px 0" }}>
+                    {m.bounced_at ? <Badge kind="bad">bounced</Badge> : m.delivered_at ? <Badge kind="ok">delivered</Badge> : null}
+                    {m.open_count > 0 && <> <Badge kind="info" >opened ×{m.open_count} (approx.)</Badge></>}
+                  </div>
+                )}
                 <div className="small muted">{m.direction === "inbound" ? "from" : "to"} {m.to_email} · {ago(m.sent_at ?? m.created_at)}{m.provider ? ` · via ${m.provider}` : ""}{m.error ? ` · ${m.error}` : ""}</div>
                 {m.meta?.summary && <div className="small">{m.meta.summary}</div>}
                 <details><summary className="small">Show</summary><div className="email">{m.body}</div></details>

@@ -106,6 +106,10 @@ export interface Message {
   classification: string | null;
   meta: Record<string, any>;
   provider: string | null;
+  delivered_at: string | null;
+  bounced_at: string | null;
+  first_opened_at: string | null;
+  open_count: number;
   error: string | null;
   approved_by: string | null;
   sent_at: string | null;

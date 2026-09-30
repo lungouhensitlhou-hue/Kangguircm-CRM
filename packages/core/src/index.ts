@@ -23,3 +23,5 @@ export { postChatMessage } from "./agents/chat";
 export { queueSend } from "./agents/send";
 export { DiscoverInput } from "./agents/discover";
 export * from "./providers/mx";
+export * from "./tracking";
+export * from "./providers/email-events";

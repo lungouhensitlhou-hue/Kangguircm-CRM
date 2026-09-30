@@ -25,7 +25,7 @@ export default async function Dashboard() {
       <div className="grid g4" style={{ marginBottom: 14 }}>
         <div className="card stat"><div className="n">{stats.total}</div><div className="l">Total leads</div></div>
         <div className="card stat"><div className="n">{stats.messages.drafts}</div><div className="l"><Link href="/approvals">Drafts to approve</Link></div></div>
-        <div className="card stat"><div className="n">{stats.messages.sent}</div><div className="l">Emails sent</div></div>
+        <div className="card stat"><div className="n">{stats.messages.sent}</div><div className="l">Emails sent</div><div className="small muted" style={{ marginTop: 4 }}>{stats.email.delivered} delivered · {stats.email.bounced} bounced{stats.email.opened ? ` · ${stats.email.opened} opened (approx.)` : ""}{stats.email.complaints ? ` · ${stats.email.complaints} complaint(s)` : ""}</div></div>
         <div className="card stat"><div className="n">{stats.replyRate}%</div><div className="l">Reply rate ({stats.messages.replies} replies)</div></div>
       </div>
       <div className="grid g2">

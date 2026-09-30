@@ -2,6 +2,7 @@ import { query, queryOne } from "../db";
 import { getSettings } from "../settings";
 import { isSuppressed, isWithinSendWindow, nextSendWindow, senderReady, sentToday, unsubscribeApiUrl } from "../compliance";
 import { setStage, getLead } from "../leads";
+import { openPixelUrl, textToHtml } from "../tracking";
 import { enqueueRun } from "../queue";
 import type { Message } from "../types";
 import { PermanentError, type Handler } from "./runtime";
@@ -42,6 +43,7 @@ export const sendHandler: Handler = async (ctx) => {
       from: `${s.senderName} <${s.senderEmail}>`,
       subject: msg.subject,
       text: msg.body,
+      html: s.trackOpens ? textToHtml(msg.body, openPixelUrl(msg.unsub_token!)) : undefined,
       idempotencyKey: msg.id,
       headers: { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
     });

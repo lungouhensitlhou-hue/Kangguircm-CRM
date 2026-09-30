@@ -4,7 +4,7 @@ import { api, useAction } from "./useApi";
 
 export interface S {
   senderName: string; senderEmail: string; companyName: string; physicalAddress: string; dailySendCap: number;
-  sendWindowStartHour: number; sendWindowEndHour: number; timezone: string; sendOnWeekends: boolean; followupDays: number[]; autoApprove: boolean; offer: string;
+  sendWindowStartHour: number; sendWindowEndHour: number; timezone: string; sendOnWeekends: boolean; trackOpens: boolean; followupDays: number[]; autoApprove: boolean; offer: string;
 }
 
 export function SettingsForm({ initial }: { initial: S }) {
@@ -38,6 +38,10 @@ export function SettingsForm({ initial }: { initial: S }) {
       <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontWeight: 400, color: "var(--text)", marginBottom: 14 }}>
         <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={s.autoApprove} onChange={(e) => set("autoApprove", e.target.checked)} />
         <span><strong>Auto-approve drafts</strong> (skip human review; sends still obey window, cap and suppression). Leave off until you trust the drafts.</span>
+      </label>
+      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontWeight: 400, color: "var(--text)", marginBottom: 14 }}>
+        <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={s.trackOpens} onChange={(e) => set("trackOpens", e.target.checked)} />
+        <span><strong>Track email opens (approximate)</strong>. Adds a hidden 1-pixel image and an HTML version of each email. Many apps preload images (Apple Mail, Gmail) and security scanners open everything, so counts are a hint, not proof. It can also lower inbox placement for cold email. Leave off unless you want the hint.</span>
       </label>
       <button className="primary" disabled={a.busy}>Save settings</button>
     </form>

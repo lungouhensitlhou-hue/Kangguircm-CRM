@@ -69,11 +69,17 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 114 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm test            # 131 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
 npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service.
+
+## Delivery and open tracking
+
+- **Delivered / bounced / spam complaints** come from your email provider's webhooks (Resend, SendGrid, Postmark, Mailgun; not plain SMTP). Point the webhook at `/api/webhooks/email/<provider>` and set the matching secret from `.env.example`; unsigned requests are rejected. A hard bounce marks the contact bounced and cancels unsent drafts to it; a spam complaint suppresses the address and disqualifies the lead. Verification follows each vendor's documented scheme and is tested with locally generated signatures, not against the live vendors.
+- **Opens (optional, off by default)**: Settings → "Track email opens". Adds a self-hosted 1px image and an HTML twin of each email; works with any provider including SMTP. It is approximate: opens within 20 s of sending and known scanner user agents are not counted, but Apple Mail/Gmail image preloading can still inflate counts, image-blocking clients are missed, and tracking can lower cold-email inbox placement. Provider-side open/click tracking stays disabled so nothing is double counted.
+- Replies remain the only reliable "they read it" signal.
 
 ## Bring your own keys
 

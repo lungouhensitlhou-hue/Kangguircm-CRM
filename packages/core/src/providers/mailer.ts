@@ -6,6 +6,8 @@ export interface OutgoingEmail {
   from: string;
   subject: string;
   text: string;
+  /** Optional HTML twin (only sent when open tracking is enabled). */
+  html?: string;
   headers?: Record<string, string>;
   /** Stable per-message key so providers that support it can de-duplicate a retried send. */
   idempotencyKey?: string;
@@ -32,7 +34,7 @@ export class SmtpMailer implements Mailer {
     this.transport = nodemailer.createTransport(url);
   }
   async send(m: OutgoingEmail) {
-    const info = await this.transport.sendMail({ from: m.from, to: m.to, subject: m.subject, text: m.text, headers: m.headers });
+    const info = await this.transport.sendMail({ from: m.from, to: m.to, subject: m.subject, text: m.text, html: m.html, headers: m.headers });
     return { id: String(info.messageId) };
   }
 }
@@ -49,7 +51,7 @@ export class ResendMailer implements Mailer {
   async send(m: OutgoingEmail) {
     const headers: Record<string, string> = { authorization: `Bearer ${this.key}` };
     if (m.idempotencyKey) headers["idempotency-key"] = m.idempotencyKey;
-    const res = await postJson("https://api.resend.com/emails", headers, { from: m.from, to: [m.to], subject: m.subject, text: m.text, headers: m.headers }, { label: "resend", ...this.http });
+    const res = await postJson("https://api.resend.com/emails", headers, { from: m.from, to: [m.to], subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), headers: m.headers }, { label: "resend", ...this.http });
     return { id: String(((await res.json()) as any).id) };
   }
 }
@@ -63,7 +65,7 @@ export class SendGridMailer implements Mailer {
       personalizations: [{ to: [{ email: m.to }] }],
       from: { email: from.email, ...(from.name ? { name: from.name } : {}) },
       subject: m.subject,
-      content: [{ type: "text/plain", value: m.text }],
+      content: [{ type: "text/plain", value: m.text }, ...(m.html ? [{ type: "text/html", value: m.html }] : [])],
       headers: m.headers,
       tracking_settings: { click_tracking: { enable: false }, open_tracking: { enable: false } },
     }, { label: "sendgrid", ...this.http });
@@ -76,7 +78,7 @@ export class PostmarkMailer implements Mailer {
   constructor(private token: string, private stream = "outbound", private http: PostOptions = NO_RETRY) {}
   async send(m: OutgoingEmail) {
     const res = await postJson("https://api.postmarkapp.com/email", { "x-postmark-server-token": this.token, accept: "application/json" }, {
-      From: m.from, To: m.to, Subject: m.subject, TextBody: m.text, MessageStream: this.stream, TrackOpens: false,
+      From: m.from, To: m.to, Subject: m.subject, TextBody: m.text, ...(m.html ? { HtmlBody: m.html } : {}), MessageStream: this.stream, TrackOpens: false,
       Headers: Object.entries(m.headers ?? {}).map(([Name, Value]) => ({ Name, Value })),
     }, { label: "postmark", ...this.http });
     return { id: String(((await res.json()) as any).MessageID) };
@@ -88,6 +90,8 @@ export class MailgunMailer implements Mailer {
   constructor(private key: string, private domain: string, private region: "us" | "eu" = "us", private fetchImpl: typeof fetch = fetch) {}
   async send(m: OutgoingEmail) {
     const form = new URLSearchParams({ from: m.from, to: m.to, subject: m.subject, text: m.text });
+    if (m.html) form.set("html", m.html);
+    form.set("o:tracking", "no"); // opens are counted by our own pixel only
     for (const [k, v] of Object.entries(m.headers ?? {})) form.set(`h:${k}`, v);
     const base = this.region === "eu" ? "https://api.eu.mailgun.net" : "https://api.mailgun.net";
     const res = await this.fetchImpl(`${base}/v3/${this.domain}/messages`, {

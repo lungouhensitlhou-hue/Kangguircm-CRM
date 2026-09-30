@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 const PW = "e2e-password-123";
@@ -40,6 +41,7 @@ test("settings: sender identity is required before approving, then saved", async
   await page.getByLabel("Window start (hour)").fill("0");
   await page.getByLabel("Window end (hour)").fill("24");
   await page.getByLabel("Also send on weekends").check();
+  await page.getByLabel(/Track email opens/).check();
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByRole("status")).toContainText("Settings saved");
   await page.reload();
@@ -122,6 +124,25 @@ test("research → draft → approve → send → reply → unsubscribe (full ou
   const bodyText = await page.locator(".email").first().innerText();
   const token = bodyText.match(/\/unsubscribe\/([A-Za-z0-9_-]+)/)![1];
   expect(bodyText).toContain("Kangguircm");
+
+  // open tracking: a real open is counted, a scanner is not; delivery webhook is verified
+  const px = `http://127.0.0.1:3190/t/o/${token}.gif`;
+  const pxRes = await request.get(px, { headers: { "user-agent": "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Mail" } });
+  expect(pxRes.headers()["content-type"]).toBe("image/gif");
+  await request.get(px, { headers: { "user-agent": "Mozilla/5.0 (compatible; Proofpoint URL Defense)" } });
+  expect((await request.get("http://127.0.0.1:3190/t/o/bogus-token.gif")).headers()["content-type"]).toBe("image/gif"); // no token oracle
+  const evBody = JSON.stringify({ type: "email.delivered", data: { email_id: "re_unknown", to: ["jane.smith@e2e-ortho.test"] } });
+  const wts = String(Math.floor(Date.now() / 1000));
+  const wsig = "v1," + crypto.createHmac("sha256", Buffer.from("ZTJlLXdlYmhvb2stc2VjcmV0LWJ5dGVzLTEyMzQ1Ng==", "base64")).update(`msg_e2e.${wts}.${evBody}`).digest("base64");
+  const hook = "http://127.0.0.1:3190/api/webhooks/email/resend";
+  expect((await request.post(hook, { data: JSON.parse(evBody) })).status()).toBe(401);
+  expect((await request.post(hook, { headers: { "svix-id": "msg_e2e", "svix-timestamp": wts, "svix-signature": "v1,AAAA" }, data: JSON.parse(evBody) })).status()).toBe(401);
+  expect((await request.post("http://127.0.0.1:3190/api/webhooks/email/nope", { data: {} })).status()).toBe(404);
+  const okHook = await request.post(hook, { headers: { "svix-id": "msg_e2e", "svix-timestamp": wts, "svix-signature": wsig, "content-type": "application/json" }, data: evBody });
+  expect(await okHook.json()).toMatchObject({ ok: true, applied: 1 });
+  await page.reload();
+  await expect(page.getByText("opened ×1 (approx.)")).toBeVisible();
+  await expect(page.locator(".badge.ok", { hasText: "delivered" })).toBeVisible();
 
   // inbound reply webhook: secret required
   expect((await request.post("/api/inbound", { data: { from: "jane.smith@e2e-ortho.test", body: "hi" } })).status()).toBe(401);
