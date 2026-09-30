@@ -1,0 +1,44 @@
+import { emitEvent, isCancelled } from "../queue";
+import type { AgentRun } from "../types";
+import type { LLM, Usage } from "../providers/llm";
+import { costUsd } from "../providers/llm";
+import type { NpiClient } from "../providers/npi";
+import type { WebTools } from "../providers/web";
+import type { Mailer } from "../providers/mailer";
+
+export interface Deps {
+  llm: LLM | null;
+  npi: NpiClient;
+  web: WebTools;
+  mailer: Mailer;
+  now?: () => Date;
+}
+
+export class RunCancelled extends Error {
+  constructor() { super("run cancelled"); }
+}
+/** Errors that retrying cannot fix (bad input, missing lead). */
+export class PermanentError extends Error {}
+
+export class RunContext {
+  usage: Usage = { tokensIn: 0, tokensOut: 0 };
+  costUsd = 0;
+  constructor(readonly run: AgentRun, readonly deps: Deps) {}
+
+  get now(): Date { return this.deps.now?.() ?? new Date(); }
+
+  async log(message: string, data?: unknown, type = "info") { await emitEvent(this.run.id, type, message, data); }
+  async progress(message: string, data?: unknown) { await emitEvent(this.run.id, "progress", message, data); }
+  async tool(name: string, input: unknown, result: unknown) { await emitEvent(this.run.id, "tool", name, { input, result }); }
+
+  addUsage(u: Usage) {
+    this.usage.tokensIn += u.tokensIn;
+    this.usage.tokensOut += u.tokensOut;
+    const model = (this.deps.llm as any)?.model as string | undefined;
+    if (model) this.costUsd += costUsd(model, u);
+  }
+
+  async checkCancelled() { if (await isCancelled(this.run.id)) throw new RunCancelled(); }
+}
+
+export type Handler = (ctx: RunContext) => Promise<Record<string, unknown>>;
