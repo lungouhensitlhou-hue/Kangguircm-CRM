@@ -2,7 +2,10 @@
   "name": "kangguircm-crm",
   "private": true,
   "version": "1.0.0",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "db:migrate": "npm run migrate -w @rcm/core",
     "db:seed": "npm run seed -w @rcm/core",
@@ -11,7 +14,10 @@
     "build": "npm run build -w @rcm/web",
     "test": "npm run test -w @rcm/core",
     "test:e2e": "npm run e2e -w @rcm/web",
-    "typecheck": "npm run typecheck -w @rcm/core && npm run typecheck -w @rcm/worker && npm run typecheck -w @rcm/web"
+    "typecheck": "npm run typecheck -w @rcm/core && npm run typecheck -w @rcm/worker && npm run typecheck -w @rcm/web",
+    "live:check": "npm run live:check -w @rcm/core"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }
