@@ -49,6 +49,11 @@ export function unsubscribeUrl(token: string): string {
   return `${baseUrl()}/unsubscribe/${token}`;
 }
 
+/** RFC 8058 one-click endpoint for the List-Unsubscribe header (accepts POST without a browser). */
+export function unsubscribeApiUrl(token: string): string {
+  return `${baseUrl()}/api/unsubscribe/${token}`;
+}
+
 /** CAN-SPAM footer: identifies the sender, gives a physical address and a working opt-out. */
 export function complianceFooter(s: Settings, token: string): string {
   const lines = [
@@ -81,14 +86,16 @@ function partsInTz(now: Date, tz: string): { hour: number; weekday: string } {
   return { hour, weekday: p.find((x) => x.type === "weekday")!.value };
 }
 
-export function isWithinSendWindow(now: Date, s: Pick<Settings, "timezone" | "sendWindowStartHour" | "sendWindowEndHour">): boolean {
+type Window = Pick<Settings, "timezone" | "sendWindowStartHour" | "sendWindowEndHour"> & { sendOnWeekends?: boolean };
+
+export function isWithinSendWindow(now: Date, s: Window): boolean {
   const { hour, weekday } = partsInTz(now, s.timezone);
-  if (weekday === "Sat" || weekday === "Sun") return false;
+  if (!s.sendOnWeekends && (weekday === "Sat" || weekday === "Sun")) return false;
   return hour >= s.sendWindowStartHour && hour < s.sendWindowEndHour;
 }
 
 /** Next instant (15-min granularity) inside the send window, for rescheduling. */
-export function nextSendWindow(now: Date, s: Pick<Settings, "timezone" | "sendWindowStartHour" | "sendWindowEndHour">): Date {
+export function nextSendWindow(now: Date, s: Window): Date {
   const t = new Date(now.getTime());
   for (let i = 0; i < 4 * 24 * 8; i++) {
     t.setTime(t.getTime() + 15 * 60_000);

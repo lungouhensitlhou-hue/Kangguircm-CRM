@@ -11,6 +11,7 @@ export const SettingsSchema = z.object({
   sendWindowStartHour: z.number().int().min(0).max(23),
   sendWindowEndHour: z.number().int().min(1).max(24),
   timezone: z.string(),
+  sendOnWeekends: z.boolean(),
   followupDays: z.array(z.number().int().min(1).max(60)).max(6),
   /** When true, drafts skip human approval. Off by default; sending is opt-in per operator. */
   autoApprove: z.boolean(),
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sendWindowStartHour: 8,
   sendWindowEndHour: 17,
   timezone: "America/New_York",
+  sendOnWeekends: false,
   followupDays: [3, 7],
   autoApprove: false,
   offer:

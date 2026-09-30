@@ -103,10 +103,11 @@ export async function listLeads(f: LeadFilter = {}): Promise<{ rows: LeadRow[]; 
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const order = f.sort === "name" ? "o.name ASC" : f.sort === "recent" ? "l.created_at DESC" : "l.score DESC, l.created_at DESC";
   const total = (await queryOne<{ n: number }>(`SELECT count(*)::int AS n FROM leads l JOIN organizations o ON o.id = l.organization_id ${w}`, params))!.n;
-  const lim = Math.min(f.limit ?? 50, 500);
+  const lim = Math.max(1, Math.min(Math.trunc(Number(f.limit ?? 50)) || 50, 500));
+  const off = Math.max(0, Math.trunc(Number(f.offset ?? 0)) || 0);
   const rows = await query(
     `SELECT l.*, to_jsonb(o.*) AS org FROM leads l JOIN organizations o ON o.id = l.organization_id ${w}
-     ORDER BY ${order} LIMIT ${lim} OFFSET ${Math.max(0, f.offset ?? 0)}`,
+     ORDER BY ${order} LIMIT ${lim} OFFSET ${off}`,
     params,
   );
   return { rows: rows as LeadRow[], total };

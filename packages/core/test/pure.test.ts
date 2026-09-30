@@ -4,7 +4,7 @@ import { scoreLead } from "../src/scoring";
 import { parseCsv, normalizeWebsite } from "../src/leads";
 import { detectEhr, detectPainSignals, estimateProviders, extractEmails, extractPeople } from "../src/agents/heuristics";
 import { extractJsonObject } from "../src/providers/llm";
-import { mapNpiResult, NppesClient } from "../src/providers/npi";
+import { mapNpiResult, NppesClient, normalizeTaxonomy } from "../src/providers/npi";
 import { assertSafeUrl, htmlToText, pickOfficialSite, robotsAllows } from "../src/providers/web";
 import { DEFAULT_SETTINGS } from "../src/settings";
 import { templateDraft, validateDraft, firstName } from "../src/agents/outreach";
@@ -45,6 +45,7 @@ describe("email + compliance", () => {
     expect(isWithinSendWindow(new Date("2026-09-30T15:00:00Z"), w)).toBe(true); // Wed 11:00 ET
     expect(isWithinSendWindow(new Date("2026-09-30T03:00:00Z"), w)).toBe(false); // Tue 23:00 ET
     expect(isWithinSendWindow(new Date("2026-10-03T15:00:00Z"), w)).toBe(false); // Saturday
+    expect(isWithinSendWindow(new Date("2026-10-03T15:00:00Z"), { ...w, sendOnWeekends: true })).toBe(true);
     const next = nextSendWindow(new Date("2026-10-03T15:00:00Z"), w);
     expect(isWithinSendWindow(next, w)).toBe(true);
     expect(next.getTime()).toBeGreaterThan(new Date("2026-10-03T15:00:00Z").getTime());
@@ -149,15 +150,18 @@ describe("NPPES mapping", () => {
     let url = "";
     const ok = new NppesClient((async (u: string) => { url = u; return new Response(JSON.stringify({ result_count: 0, results: [] })); }) as any);
     await ok.search({ state: "tx", taxonomy: "Orthopedic", limit: 500 });
+    expect(normalizeTaxonomy("Cardio*")).toBe("Cardio*");
     expect(url).toContain("state=TX");
-    expect(url).toContain("taxonomy_description=Orthopedic");
+    expect(url).toContain("taxonomy_description=Orthopaedic*");
     expect(url).toContain("limit=200");
     expect(url).toContain("enumeration_type=NPI-2");
-    await expect(ok.search({})).rejects.toThrow(/at least one filter/);
+    await expect(ok.search({})).rejects.toThrow(/specialty, city or name/);
+    await expect(ok.search({ state: "TX" })).rejects.toThrow(/state-only/);
+    await expect(ok.search({ state: "TX", taxonomy: "x", skip: 1200 })).rejects.toThrow(/paging/);
     const bad = new NppesClient((async () => new Response(JSON.stringify({ Errors: [{ description: "Invalid state" }] }))) as any);
-    await expect(bad.search({ state: "ZZ" })).rejects.toThrow(/Invalid state/);
+    await expect(bad.search({ state: "ZZ", city: "X" })).rejects.toThrow(/Invalid state/);
     const http500 = new NppesClient((async () => new Response("x", { status: 503 })) as any);
-    await expect(http500.search({ state: "TX" })).rejects.toThrow(/503/);
+    await expect(http500.search({ state: "TX", city: "X" })).rejects.toThrow(/503/);
   });
 });
 

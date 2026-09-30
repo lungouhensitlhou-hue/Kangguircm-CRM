@@ -21,7 +21,7 @@ export const CHAT_TOOLS: ToolSpec[] = [
   { name: "search_leads", description: "Search leads. Returns id, name, specialty, city/state, stage and score.", input_schema: obj({ q: { type: "string" }, stage: { type: "string", enum: [...STAGES] }, state: { type: "string", description: "2-letter state code" }, specialty: { type: "string" }, min_score: { type: "number" }, limit: { type: "number" } }) },
   { name: "get_lead", description: "Full detail for one lead: organization, contacts, latest research profile and messages.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "pipeline_stats", description: "Counts by stage plus outreach totals and reply rate.", input_schema: obj({}) },
-  { name: "start_discovery", description: "Queue a lead-discovery run against the NPPES registry.", input_schema: obj({ states: { type: "array", items: { type: "string" } }, specialty: { type: "string" }, limit: { type: "number" }, auto_research: { type: "boolean" } }, ["states"]) },
+  { name: "start_discovery", description: "Queue a lead-discovery run against the NPPES registry. A specialty or city is required (the registry rejects state-only searches).", input_schema: obj({ states: { type: "array", items: { type: "string" } }, specialty: { type: "string" }, city: { type: "string" }, limit: { type: "number" }, auto_research: { type: "boolean" } }, ["states"]) },
   { name: "research_lead", description: "Queue a research run for a lead (finds website, EHR, size, decision-makers).", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "draft_outreach", description: "Queue the outreach agent to draft an email for a lead. Lands in Approvals; never sends.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "move_stage", description: "Move a lead to a pipeline stage.", input_schema: obj({ lead_id: { type: "string" }, stage: { type: "string", enum: [...STAGES] } }, ["lead_id", "stage"]) },
@@ -56,7 +56,7 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
     case "start_discovery": {
       const states = (Array.isArray(i.states) ? i.states : []).map((s: string) => String(s).toUpperCase().slice(0, 2));
       if (!states.length) throw new Error("states is required");
-      const run = await enqueueRun({ kind: "discover", parentId: ctx.run.id, createdBy: "chat", idempotencyKey: key(JSON.stringify(i)), input: { states, taxonomy: i.specialty, limit: Math.min(Number(i.limit ?? 50), 1000), autoResearch: !!i.auto_research } });
+      const run = await enqueueRun({ kind: "discover", parentId: ctx.run.id, createdBy: "chat", idempotencyKey: key(JSON.stringify(i)), input: { states, taxonomy: i.specialty, city: i.city, limit: Math.min(Number(i.limit ?? 50), 1000), autoResearch: !!i.auto_research } });
       out = { started: true, run_id: run.id };
       break;
     }

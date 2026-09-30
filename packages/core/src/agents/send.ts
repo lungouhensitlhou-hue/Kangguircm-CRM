@@ -1,6 +1,6 @@
 import { query, queryOne } from "../db";
 import { getSettings } from "../settings";
-import { isSuppressed, isWithinSendWindow, nextSendWindow, senderReady, sentToday, unsubscribeUrl } from "../compliance";
+import { isSuppressed, isWithinSendWindow, nextSendWindow, senderReady, sentToday, unsubscribeApiUrl } from "../compliance";
 import { setStage, getLead } from "../leads";
 import { enqueueRun } from "../queue";
 import type { Message } from "../types";
@@ -36,7 +36,7 @@ export const sendHandler: Handler = async (ctx) => {
   if ((await sentToday()) >= s.dailySendCap) return await defer(`daily cap of ${s.dailySendCap} reached`, nextSendWindow(new Date(now.getTime() + 3600_000 * 4), s));
 
   try {
-    const url = unsubscribeUrl(msg.unsub_token!);
+    const url = unsubscribeApiUrl(msg.unsub_token!);
     const out = await ctx.deps.mailer.send({
       to,
       from: `${s.senderName} <${s.senderEmail}>`,

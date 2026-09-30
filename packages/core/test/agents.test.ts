@@ -44,7 +44,7 @@ describe("discover agent", () => {
     expect(run.output).toMatchObject({ fetched: 3, created: 3, existing: 0, researchQueued: 2 });
     expect(npi.calls[0]).toMatchObject({ state: "TX", taxonomy: "Ortho", limit: 3 });
     expect((await query("SELECT count(*)::int n FROM agent_runs WHERE kind='research'"))[0].n).toBe(2);
-    const r2 = await enqueueRun({ kind: "discover", input: { states: ["TX"], limit: 3 } });
+    const r2 = await enqueueRun({ kind: "discover", input: { states: ["TX"], taxonomy: "Ortho", limit: 3 } });
     await drain(deps);
     run = (await getRun(r2.id))!;
     expect(run.output).toMatchObject({ created: 0, existing: 3 });
@@ -53,18 +53,22 @@ describe("discover agent", () => {
   it("paginates across pages of 200 and stops on short page", async () => {
     const many = Array.from({ length: 250 }, (_, i) => ({ name: `Clinic ${i}`, npi: String(5000 + i), city: "X", state: "TX" }));
     const npi = new FakeNpi(many);
-    const r = await enqueueRun({ kind: "discover", input: { states: ["TX"], limit: 250 } });
+    const r = await enqueueRun({ kind: "discover", input: { states: ["TX"], taxonomy: "x", limit: 250 } });
     await processOne("t", makeDeps({ npi }));
     expect((await getRun(r.id))!.output).toMatchObject({ fetched: 250, created: 250 });
     expect(npi.calls.map((c) => [c.skip, c.limit])).toEqual([[0, 200], [200, 50]]);
   });
 
   it("rejects invalid input without retrying", async () => {
-    const r = await enqueueRun({ kind: "discover", input: { states: ["Texas"] } });
-    await processOne("t", makeDeps());
-    const run = (await getRun(r.id))!;
-    expect(run.status).toBe("failed");
-    expect(run.attempts).toBe(1);
+    const r = await enqueueRun({ kind: "discover", input: { states: ["Texas"], taxonomy: "x" } });
+    const r2 = await enqueueRun({ kind: "discover", input: { states: ["TX"] } });
+    await drain(makeDeps());
+    for (const id of [r.id, r2.id]) {
+      const run = (await getRun(id))!;
+      expect(run.status).toBe("failed");
+      expect(run.attempts).toBe(1);
+    }
+    expect((await getRun(r2.id))!.error).toMatch(/state alone/);
   });
 });
 
@@ -183,7 +187,7 @@ describe("outreach → approval → send pipeline", () => {
     const sent = deps.mailer.outbox[0];
     expect(sent.to).toBe("jane.smith@riverside-ortho.test");
     expect(sent.from).toBe("Sam Rivers <sam@kangguircm.test>");
-    expect(sent.headers!["List-Unsubscribe"]).toContain("/unsubscribe/");
+    expect(sent.headers!["List-Unsubscribe"]).toBe(`<http://app.test/api/unsubscribe/${d.unsub_token}>`);
     expect(sent.headers!["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     const lead = (await getLead(leadId))!;
     expect(lead.stage).toBe("contacted");

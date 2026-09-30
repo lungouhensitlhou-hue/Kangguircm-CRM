@@ -11,6 +11,8 @@ export const DiscoverInput = z.object({
   limit: z.number().int().min(1).max(1000).default(50),
   autoResearch: z.boolean().default(false),
   researchTop: z.number().int().min(0).max(200).default(25),
+}).refine((v) => !!(v.taxonomy?.trim() || v.city?.trim()), {
+  message: "Give a specialty (or a city): the NPPES registry does not allow searching by state alone",
 });
 
 export const discoverHandler: Handler = async (ctx) => {
@@ -23,7 +25,7 @@ export const discoverHandler: Handler = async (ctx) => {
 
   for (const state of states) {
     let skip = 0;
-    const want = inp.limit;
+    const want = Math.min(inp.limit, 1200); // registry paging ceiling (skip <= 1000, limit <= 200)
     let got = 0;
     while (got < want) {
       await ctx.checkCancelled();

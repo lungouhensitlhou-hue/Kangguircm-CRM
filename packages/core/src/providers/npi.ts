@@ -44,17 +44,26 @@ export function mapNpiResult(r: any): NewOrg | null {
   };
 }
 
+/** The registry spells it "Orthopaedic" and supports trailing wildcards; make friendly input match. */
+export function normalizeTaxonomy(t: string): string {
+  let v = t.trim().replace(/orthoped/i, "Orthopaed");
+  if (v.length >= 2 && !v.includes("*")) v += "*";
+  return v;
+}
+
 export class NppesClient implements NpiClient {
   constructor(private fetchImpl: Fetch = fetch, private baseUrl = "https://npiregistry.cms.hhs.gov/api/") {}
 
   async search(q: NpiQuery): Promise<NewOrg[]> {
+    // The registry rejects a state-only search ("requires additional search criteria") and caps skip at 1000.
+    if (!q.taxonomy && !q.city && !q.organizationName) throw new Error("NPI search needs a specialty, city or name in addition to state (the registry does not allow state-only searches)");
+    if ((q.skip ?? 0) > 1000) throw new Error("NPPES registry limits paging to the first 1,200 results per query; narrow the search (city or specialty)");
     const p = new URLSearchParams({ version: "2.1", enumeration_type: q.type ?? "NPI-2", limit: String(Math.min(q.limit ?? 50, 200)) });
     if (q.skip) p.set("skip", String(q.skip));
     if (q.state) p.set("state", q.state.toUpperCase());
     if (q.city) p.set("city", q.city);
-    if (q.taxonomy) p.set("taxonomy_description", q.taxonomy);
+    if (q.taxonomy) p.set("taxonomy_description", normalizeTaxonomy(q.taxonomy));
     if (q.organizationName) p.set("organization_name", q.organizationName);
-    if (!q.state && !q.city && !q.taxonomy && !q.organizationName) throw new Error("NPI search needs at least one filter (state, city, specialty or name)");
     const res = await this.fetchImpl(`${this.baseUrl}?${p}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
     if (!res.ok) throw new Error(`NPPES registry returned HTTP ${res.status}`);
     const body: any = await res.json();
