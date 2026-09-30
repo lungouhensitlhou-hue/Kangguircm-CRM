@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@rcm/core/types";
-import { listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
+import { integrationStatus, listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
 import { StatusBadge } from "@/components/Badge";
 import { ago } from "@/lib/format";
 
@@ -14,12 +14,13 @@ export default async function Dashboard() {
     getSettings(),
   ]);
   const ready = senderReady(settings);
+  const integ = integrationStatus();
   const max = Math.max(1, ...Object.values(stats.byStage));
   return (
     <>
       <div className="head"><div><h1>Dashboard</h1><div className="muted">Your outreach engine at a glance</div></div></div>
       {!ready.ok && <div className="notice warn">Before any email can be approved, complete <Link href="/settings">Settings</Link>: {ready.missing.join(", ")}. (CAN-SPAM requires a physical address and sender identity.)</div>}
-      {!process.env.ANTHROPIC_API_KEY && <div className="notice warn">No <code>ANTHROPIC_API_KEY</code> on this server: research and drafting use rule-based fallbacks. Set it on the worker to enable Claude-powered agents.</div>}
+      {!integ.llm && <div className="notice warn">No AI provider key found: research and drafting use rule-based fallbacks. Add any supported key (Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, OpenRouter, Ollama…) to the worker's environment. See Settings.</div>}
       <div className="grid g4" style={{ marginBottom: 14 }}>
         <div className="card stat"><div className="n">{stats.total}</div><div className="l">Total leads</div></div>
         <div className="card stat"><div className="n">{stats.messages.drafts}</div><div className="l"><Link href="/approvals">Drafts to approve</Link></div></div>

@@ -20,6 +20,35 @@ export interface LLM {
   }): Promise<{ text: string; usage: Usage; steps: number }>;
 }
 
+/**
+ * Provider-agnostic "ask for JSON, validate with zod, repair once" loop.
+ * `call` runs one model turn for the given conversation and returns its text.
+ */
+export async function runJson<T>(o: {
+  prompt: string;
+  schema: z.ZodType<T>;
+  call: (messages: ChatTurn[]) => Promise<{ text: string; usage: Usage }>;
+}): Promise<{ data: T; usage: Usage }> {
+  const usage: Usage = { tokensIn: 0, tokensOut: 0 };
+  const messages: ChatTurn[] = [{ role: "user", content: `${o.prompt}\n\nRespond with ONLY a single JSON object. No prose, no code fences.` }];
+  let lastErr = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await o.call(messages);
+    usage.tokensIn += r.usage.tokensIn;
+    usage.tokensOut += r.usage.tokensOut;
+    try {
+      const parsed = o.schema.safeParse(extractJsonObject(r.text));
+      if (parsed.success) return { data: parsed.data, usage };
+      lastErr = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    } catch (e) {
+      lastErr = (e as Error).message;
+    }
+    messages.push({ role: "assistant", content: r.text || "{}" });
+    messages.push({ role: "user", content: `That output was invalid (${lastErr}). Return ONLY the corrected JSON object.` });
+  }
+  throw new Error(`model returned invalid JSON after retry: ${lastErr}`);
+}
+
 /** USD per million tokens (input, output). Used for run cost accounting only. */
 const PRICING: Record<string, [number, number]> = {
   "claude-opus-5-5": [4, 20],
@@ -29,8 +58,10 @@ const PRICING: Record<string, [number, number]> = {
   "claude-fable-5-1": [10, 50],
   "claude-haiku-4-5": [1, 5],
 };
-export function costUsd(model: string, u: Usage): number {
-  const [i, o] = PRICING[model] ?? [5, 25];
+export function costUsd(model: string, u: Usage, env: Record<string, string | undefined> = process.env): number {
+  // Other providers: set LLM_PRICE_IN / LLM_PRICE_OUT (USD per million tokens) to get cost tracking; otherwise cost shows as 0.
+  const envPrice = env.LLM_PRICE_IN && env.LLM_PRICE_OUT ? ([Number(env.LLM_PRICE_IN), Number(env.LLM_PRICE_OUT)] as [number, number]) : null;
+  const [i, o] = PRICING[model] ?? envPrice ?? [0, 0];
   return (u.tokensIn * i + u.tokensOut * o) / 1_000_000;
 }
 
@@ -65,33 +96,15 @@ export class AnthropicLLM implements LLM {
   }
 
   async json<T>(o: { system: string; prompt: string; schema: z.ZodType<T>; maxTokens?: number }) {
-    const usage: Usage = { tokensIn: 0, tokensOut: 0 };
-    const messages: Anthropic.MessageParam[] = [
-      { role: "user", content: `${o.prompt}\n\nRespond with ONLY a single JSON object. No prose, no code fences.` },
-    ];
-    let lastErr = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const res = await this.client.messages.create({
-        model: this.model,
-        max_tokens: o.maxTokens ?? 8000,
-        system: o.system,
-        messages,
-      });
-      usage.tokensIn += res.usage.input_tokens;
-      usage.tokensOut += res.usage.output_tokens;
-      if (res.stop_reason === "refusal") throw new Error("model refused the request");
-      const text = this.text(res.content);
-      try {
-        const parsed = o.schema.safeParse(extractJsonObject(text));
-        if (parsed.success) return { data: parsed.data, usage };
-        lastErr = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-      } catch (e) {
-        lastErr = (e as Error).message;
-      }
-      messages.push({ role: "assistant", content: text || "{}" });
-      messages.push({ role: "user", content: `That output was invalid (${lastErr}). Return ONLY the corrected JSON object.` });
-    }
-    throw new Error(`model returned invalid JSON after retry: ${lastErr}`);
+    return runJson({
+      prompt: o.prompt,
+      schema: o.schema,
+      call: async (messages) => {
+        const res = await this.client.messages.create({ model: this.model, max_tokens: o.maxTokens ?? 8000, system: o.system, messages });
+        if (res.stop_reason === "refusal") throw new Error("model refused the request");
+        return { text: this.text(res.content), usage: { tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens } };
+      },
+    });
   }
 
   async converse(o: Parameters<LLM["converse"]>[0]) {
@@ -127,11 +140,4 @@ export class AnthropicLLM implements LLM {
     }
     return { text: "I reached my step limit before finishing. Progress so far is recorded in the run log.", usage, steps };
   }
-}
-
-/** Build the LLM from env. Returns null when no credentials are configured (agents fall back to rules). */
-export function llmFromEnv(): LLM | null {
-  if (process.env.AGENT_LLM === "off") return null;
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null;
-  return new AnthropicLLM(new Anthropic(), process.env.AGENT_MODEL ?? "claude-opus-5-5");
 }

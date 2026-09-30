@@ -1,5 +1,6 @@
 import type { Deps } from "./runtime";
-import { llmFromEnv } from "../providers/llm";
+import { llmFromEnv } from "../providers/llm-factory";
+import { searcherFromEnv } from "../providers/search";
 import { NppesClient } from "../providers/npi";
 import { HttpWebTools } from "../providers/web";
 import { mailerFromEnv } from "../providers/mailer";
@@ -13,7 +14,7 @@ export function depsFromEnv(): Deps {
   return {
     llm: llmFromEnv(),
     npi: new NppesClient(fetch, process.env.NPPES_BASE_URL || undefined),
-    web: new HttpWebTools({ allowPrivate: process.env.ALLOW_PRIVATE_FETCH === "1" }),
+    web: new HttpWebTools({ allowPrivate: process.env.ALLOW_PRIVATE_FETCH === "1", searcher: searcherFromEnv() }),
     mailer: mailerFromEnv(),
   };
 }

@@ -101,6 +101,7 @@ test("research → draft → approve → send → reply → unsubscribe (full ou
   const draft = page.getByTestId("draft").first();
   await expect(draft).toContainText("Riverside Orthopedics");
   await expect(draft).toContainText("jane.smith@e2e-ortho.test");
+  await expect(draft).toContainText("runs on athenahealth"); // written by the AI provider, not the template
   await expect(draft).toContainText("required by CAN-SPAM");
   await expect(draft).toContainText("100 Main St, Suite 5, Austin, TX 78701");
   await draft.getByLabel("Subject").fill("Billing help for Riverside");
@@ -115,6 +116,8 @@ test("research → draft → approve → send → reply → unsubscribe (full ou
   await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/);
   await expect(async () => { await page.reload(); await expect(page.locator(".head .badge", { hasText: "Contacted" })).toBeVisible(); }).toPass({ timeout: 30_000 });
   await expect(page.getByText("via dry-run")).toBeVisible();
+  await expect(page.getByText("AI-extracted profile")).toBeVisible();
+  await expect(page.getByText("Ghost Person")).toHaveCount(0); // hallucinated contact was dropped by the grounding check
   await page.getByText("Show").first().click();
   const bodyText = await page.locator(".email").first().innerText();
   const token = bodyText.match(/\/unsubscribe\/([A-Za-z0-9_-]+)/)![1];
@@ -153,16 +156,15 @@ test("pipeline board moves a lead between stages", async ({ page }) => {
   await expect(page.locator('[data-stage="meeting"]')).toContainText("E2e Heart Clinic");
 });
 
-test("chat agent (rule-based without an API key) answers and launches runs", async ({ page }) => {
+test("chat agent uses the configured AI provider's tool-calling", async ({ page }) => {
   await login(page);
   await page.goto("/chat");
-  await expect(page.getByText("AI is not configured")).toBeVisible();
-  await page.getByLabel("Message").fill("stats");
+  await expect(page.getByText("AI is not configured")).toHaveCount(0);
+  await page.getByLabel("Message").fill("How is my pipeline?");
   await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByTestId("chat-msgs")).toContainText(/\d+ leads\./, { timeout: 20_000 });
-  await page.getByLabel("Message").fill("research heart");
-  await page.getByRole("button", { name: "Send" }).click();
-  await expect(page.getByTestId("chat-msgs")).toContainText("Queued research for E2e Heart Clinic", { timeout: 20_000 });
+  await expect(page.getByTestId("chat-msgs")).toContainText(/AI summary: \d+ leads in your pipeline\./, { timeout: 20_000 });
+  await page.goto("/settings");
+  await expect(page.locator(".badge.ok", { hasText: "custom" }).first()).toBeVisible();
 });
 
 test("CSV import creates leads and contacts", async ({ page }) => {

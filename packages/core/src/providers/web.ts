@@ -91,7 +91,7 @@ export function robotsAllows(robots: string, path: string): boolean {
   return best ? best.allow : true;
 }
 
-export interface HttpWebOptions { allowPrivate?: boolean; timeoutMs?: number; maxBytes?: number; braveKey?: string; fetchImpl?: typeof fetch; respectRobots?: boolean }
+export interface HttpWebOptions { allowPrivate?: boolean; timeoutMs?: number; maxBytes?: number; searcher?: ((q: string) => Promise<SearchHit[]>) | null; fetchImpl?: typeof fetch; respectRobots?: boolean }
 
 export class HttpWebTools implements WebTools {
   private robotsCache = new Map<string, string>();
@@ -149,16 +149,7 @@ export class HttpWebTools implements WebTools {
   }
 
   async search(q: string): Promise<SearchHit[]> {
-    const key = this.o.braveKey ?? process.env.BRAVE_API_KEY;
-    if (!key) return [];
-    const f = this.o.fetchImpl ?? fetch;
-    const res = await f(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&count=8`, {
-      headers: { accept: "application/json", "x-subscription-token": key },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) throw new Error(`search provider HTTP ${res.status}`);
-    const body: any = await res.json();
-    return (body.web?.results ?? []).map((r: any) => ({ title: r.title ?? "", url: r.url, snippet: r.description ?? "" }));
+    return this.o.searcher ? this.o.searcher(q) : [];
   }
 }
 

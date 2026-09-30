@@ -2,6 +2,7 @@
 import http from "node:http";
 import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
+import { respond } from "../../../packages/core/test/fake-openai.mjs";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -25,6 +26,13 @@ const fixtures = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify({ result_count: results.length, results }));
   }
+  if (u.pathname === "/v1/chat/completions" && req.method === "POST") {
+    let raw = ""; req.on("data", (c) => (raw += c));
+    return req.on("end", () => {
+      if (req.headers.authorization !== "Bearer fake-key") { res.writeHead(401, { "content-type": "application/json" }); return res.end('{"error":{"message":"bad key"}}'); }
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(respond(JSON.parse(raw))));
+    });
+  }
   if (u.pathname === "/robots.txt") { res.writeHead(200); return res.end("User-agent: *\nDisallow:\n"); }
   const pages = site("E2E Orthopedic Associates");
   const p = pages[u.pathname];
@@ -41,7 +49,8 @@ const env = {
   ADMIN_EMAIL: "founder@e2e.test", ADMIN_PASSWORD: "e2e-password-123", SESSION_SECRET: "e2e-secret-e2e-secret-e2e-secret-1234",
   NPPES_BASE_URL: `http://127.0.0.1:${FIX}/nppes/`, ALLOW_PRIVATE_FETCH: "1",
   INBOUND_WEBHOOK_SECRET: "e2e-inbound-secret", INSECURE_COOKIES: "1",
-  ANTHROPIC_API_KEY: "", AGENT_LLM: "off", SMTP_URL: "", BRAVE_API_KEY: "",
+  ANTHROPIC_API_KEY: "", SMTP_URL: "", BRAVE_API_KEY: "",
+  LLM_PROVIDER: "custom", LLM_BASE_URL: `http://127.0.0.1:${FIX}/v1`, AGENT_MODEL: "fake-model", LLM_API_KEY: "fake-key",
   WORKER_POLL_MS: "200", NODE_ENV: "production", PORT: String(WEB),
 };
 const admin = DB.replace(/\/[^/]+$/, "/postgres");

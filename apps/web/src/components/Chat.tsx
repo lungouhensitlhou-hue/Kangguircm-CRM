@@ -36,7 +36,7 @@ export function Chat({ initial, hasLlm }: { initial: M[]; hasLlm: boolean }) {
 
   return (
     <div className="card chatbox">
-      {!hasLlm && <div className="notice warn small">AI is not configured, so I only understand simple commands (type <code>help</code>). Set <code>ANTHROPIC_API_KEY</code> on the worker for full natural language.</div>}
+      {!hasLlm && <div className="notice warn small">AI is not configured, so I only understand simple commands (type <code>help</code>). Add an AI provider key to the worker (see Settings) for full natural language.</div>}
       <div className="msgs" data-testid="chat-msgs">
         {msgs.length === 0 && <div className="muted">Try: “Find 30 orthopedic groups in Texas and research the best ones”, “How is my pipeline?”, “Draft an email for Riverside Orthopedics”.</div>}
         {msgs.map((m) => <div key={m.id} className={`bubble ${m.role}`}>{m.content}</div>)}

@@ -42,6 +42,7 @@ export const sendHandler: Handler = async (ctx) => {
       from: `${s.senderName} <${s.senderEmail}>`,
       subject: msg.subject,
       text: msg.body,
+      idempotencyKey: msg.id,
       headers: { "List-Unsubscribe": `<${url}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
     });
     await query("UPDATE messages SET status = 'sent', sent_at = now(), provider = $2, provider_message_id = $3, error = NULL WHERE id = $1", [msg.id, ctx.deps.mailer.name, out.id]);

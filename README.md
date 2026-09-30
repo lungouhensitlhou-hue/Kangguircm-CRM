@@ -5,7 +5,7 @@ A B2B command center for a US Revenue Cycle Management company: it **finds** hea
 ```
  Browser ──► Next.js (UI + API, auth, SSE) ──► PostgreSQL ◄── Worker (agents)
                                                    ▲            │ NPPES registry · web research
-                                                   └── durable job queue + event log ◄─ Claude API · SMTP
+                                                   └── durable job queue + event log ◄─ AI provider · email provider
 ```
 
 **Why nothing times out:** the web app never runs an agent inline. A click creates an `agent_runs` row (which *is* the queue, claimed with `FOR UPDATE SKIP LOCKED`); a separate worker process executes it, writing every step to `agent_events`; the browser streams those events over Server-Sent Events. Runs retry with backoff, survive worker crashes (stale-lock reclaim), can be cancelled, and are idempotent by key.
@@ -13,7 +13,7 @@ A B2B command center for a US Revenue Cycle Management company: it **finds** hea
 ## Quick start
 
 ```bash
-cp .env.example .env            # fill in ADMIN_EMAIL, ADMIN_PASSWORD, SESSION_SECRET (+ ANTHROPIC_API_KEY, SMTP_URL)
+cp .env.example .env            # fill in ADMIN_EMAIL, ADMIN_PASSWORD, SESSION_SECRET (+ any one AI key and one email-provider key)
 docker compose up --build       # Postgres + web (:3000) + worker
 ```
 
@@ -41,11 +41,11 @@ In development the login defaults to `admin@kangguircm.local` / `changeme` (a wa
 | Agent | Input → output |
 |---|---|
 | **discover** | NPPES registry query → deduped organizations + leads (optionally fans out research runs) |
-| **research** | Fetches the practice site (SSRF-guarded, robots.txt-respecting), extracts EHR, size, billing pain signals, decision-makers and emails. With Claude it does structured extraction, **then a grounding pass that drops any person, email or quote not literally present in the fetched text**. Scores the lead 0-100 with reasons. |
-| **outreach** | Picks the best reachable, non-suppressed contact, drafts with Claude (or a template if no key / invalid draft), validates (no placeholders, links, guarantees, own unsubscribe text), appends the compliance footer, queues for approval. |
+| **research** | Fetches the practice site (SSRF-guarded, robots.txt-respecting), extracts EHR, size, billing pain signals, decision-makers and emails. With an AI model it does structured extraction, **then a grounding pass that drops any person, email or quote not literally present in the fetched text**. Scores the lead 0-100 with reasons. |
+| **outreach** | Picks the best reachable, non-suppressed contact, drafts with the AI model (or a template if no key / invalid draft), validates (no placeholders, links, guarantees, own unsubscribe text), appends the compliance footer, queues for approval. |
 | **send** | Rechecks suppression, sender identity, send window (timezone, weekdays), daily cap; sends with RFC 8058 `List-Unsubscribe` headers; moves the lead to *Contacted*. |
 | **sweep** | Every minute: reclaims dead runs, re-queues approved sends, drafts due follow-ups (default day 3 and 7, stops on reply). |
-| **chat** | Claude tool-use loop over the CRM (search, inspect, stats, start discovery/research/draft, move stage, notes). **It has no send tool.** Without an API key a rule-based command interpreter handles `stats`, `find`, `research`, `draft`, `discover`, `approvals`. |
+| **chat** | Tool-use loop over the CRM (search, inspect, stats, start discovery/research/draft, move stage, notes). **It has no send tool.** Without any AI key a rule-based command interpreter handles `stats`, `find`, `research`, `draft`, `discover`, `approvals`. |
 
 ## Safety and compliance built in
 
@@ -68,19 +68,29 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 70 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
-npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + worker + built app
+npm test            # 95 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service.
 
-## Configuration reference
+## Bring your own keys
 
-See `.env.example`. Notable: `AGENT_MODEL` (default `claude-opus-5-5`; `claude-sonnet-5-5` is cheaper for volume), `WORKER_CONCURRENCY`, `BRAVE_API_KEY` (website discovery), `SMTP_URL` (unset = dry-run), `INBOUND_WEBHOOK_SECRET`. `ALLOW_PRIVATE_FETCH=1` and `NPPES_BASE_URL` exist for tests only. Never enable the former in production.
+Put keys in the environment of the **web and worker** (see `.env.example`). The provider is auto-detected from whichever key is present; `LLM_PROVIDER` / `EMAIL_PROVIDER` / `SEARCH_PROVIDER` force a choice. **Settings** shows what is active.
+
+| Purpose | Supported providers |
+|---|---|
+| **AI model** | Anthropic (Claude), Google Gemini, OpenAI, Groq, Together, Mistral, DeepSeek, xAI, OpenRouter, Perplexity, Fireworks, Cerebras, Ollama and LM Studio (local, no key), plus any OpenAI-compatible server via `LLM_PROVIDER=custom` + `LLM_BASE_URL` |
+| **Email delivery** | Resend, SendGrid, Postmark, Mailgun, any SMTP server; none = dry-run |
+| **Website search** | Brave, Tavily, Serper, SerpAPI; none = leads need a website already |
+| **Lead source** | NPPES registry (free, no key) |
+
+Notes: `AGENT_MODEL` picks the model (Claude default `claude-opus-5-5`; other providers' built-in defaults are just starting points, so set yours). Set `LLM_PRICE_IN` / `LLM_PRICE_OUT` (USD per million tokens) to see cost per run for non-Claude models. Smaller models make more extraction mistakes: the grounding check and draft validator catch fabricated facts and rule-breaking drafts, but evaluate any new model on ~20 real practices before trusting it. Other settings: `WORKER_CONCURRENCY`, `INBOUND_WEBHOOK_SECRET`. `ALLOW_PRIVATE_FETCH=1` and `NPPES_BASE_URL` exist for tests only; never enable the former in production.
 
 ## Known limits / next steps
 
 - Single operator login. Multi-user roles, SSO, per-user ownership are the next step.
+- Provider adapters for OpenAI-format services, Gemini and the email/search APIs are verified against mocked and local fake servers matching their documented request formats, not against the live vendors. Smoke-test your own key first (run one discovery + research + draft).
 - Email finding relies on what the practice publishes; there is no paid-enrichment (Apollo/Clay) or SMTP-verification integration yet. The contact model already has `email_status` for it.
 - Reply intake is a webhook; an IMAP poller would remove the need for an inbound-parse provider.
 - The in-memory login throttle is per instance; use an edge rate limiter for multi-instance deployments.
