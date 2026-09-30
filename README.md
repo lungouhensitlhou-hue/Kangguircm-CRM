@@ -28,6 +28,8 @@ npm run dev:worker &  npm run dev:web        # http://localhost:3000
 
 In development the login defaults to `admin@kangguircm.local` / `changeme` (a warning shows). In production the app **refuses all logins** until `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `SESSION_SECRET` are set.
 
+See **[DEPLOY.md](DEPLOY.md)** for the production checklist and a table of common errors with fixes.
+
 ## First-run checklist
 
 1. **Settings** → your name, sender email, company, and **physical mailing address** (CAN-SPAM requires it; approval is blocked until set).
@@ -69,8 +71,8 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 140 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
-npm run build && npm run test:e2e   # 8 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
+npm test            # 156 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm run build && npm run test:e2e   # 9 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service.
@@ -80,6 +82,15 @@ CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service
 - **Delivered / bounced / spam complaints** come from your email provider's webhooks (Resend, SendGrid, Postmark, Mailgun; not plain SMTP). Point the webhook at `/api/webhooks/email/<provider>` and set the matching secret from `.env.example`; unsigned requests are rejected. A hard bounce marks the contact bounced and cancels unsent drafts to it; a spam complaint suppresses the address and disqualifies the lead. Verification follows each vendor's documented scheme and is tested against the vendors' own official libraries (see below). Mailgun's signature does not cover the request body, so each token is accepted once. Provider-side link/open tracking is explicitly disabled on sends (link tracking would rewrite the unsubscribe URL).
 - **Opens (optional, off by default)**: Settings → "Track email opens". Adds a self-hosted 1px image and an HTML twin of each email; works with any provider including SMTP. It is approximate: opens within 20 s of sending and known scanner user agents are not counted, but Apple Mail/Gmail image preloading can still inflate counts, image-blocking clients are missed, and tracking can lower cold-email inbox placement. Provider-side open/click tracking stays disabled so nothing is double counted.
 - Replies remain the only reliable "they read it" signal.
+
+## Built to fail loudly and recoverably
+
+- **Config validation** at startup and on the Settings page: catches missing secrets, `APP_BASE_URL` pointing at localhost (broken unsubscribe links), malformed keys/URLs, unknown providers, missing webhook secrets, and the test-only SSRF bypass, each with the exact fix.
+- **Connection test** (Settings, or `npm run live:check`): live checks of the database, worker heartbeat, AI (structured output + tool calling), registry, web fetch/search, DNS, and the email provider's login and **sender-domain verification**, without sending anything.
+- **Vendor errors come with plain-English fixes** (bad key, unverified domain/sender, no credits, unknown model, rate limits).
+- **Misconfiguration never crashes the worker or fakes a delivery**: a broken AI/search setting degrades to rule-based/off with a logged reason; a broken email setting makes sends fail visibly instead of being marked sent.
+- **Missing worker is obvious** (red dashboard banner) and the database is awaited on startup instead of crashing.
+- Friendly error and 404 pages instead of stack traces.
 
 ## How the integrations were verified
 

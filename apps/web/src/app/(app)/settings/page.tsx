@@ -1,4 +1,5 @@
-import { baseUrl, SUPPORTED_EMAIL_PROVIDERS, SUPPORTED_LLM_PROVIDERS, SUPPORTED_SEARCH_PROVIDERS, getSettings, integrationStatus, query, senderReady } from "@rcm/core";
+import { Diagnostics } from "@/components/Diagnostics";
+import { baseUrl, validateConfig, SUPPORTED_EMAIL_PROVIDERS, SUPPORTED_LLM_PROVIDERS, SUPPORTED_SEARCH_PROVIDERS, getSettings, integrationStatus, query, senderReady } from "@rcm/core";
 import { SettingsForm, Suppressions } from "@/components/SettingsForm";
 
 export const dynamic = "force-dynamic";
@@ -7,13 +8,22 @@ export default async function SettingsPage() {
   const [s, sup] = await Promise.all([getSettings(), query<{ email: string; reason: string }>("SELECT email, reason FROM suppressions ORDER BY created_at DESC LIMIT 200")]);
   const ready = senderReady(s);
   const integ = integrationStatus();
+  const issues = validateConfig().filter((i) => i.level !== "info");
   return (
     <>
       <div className="head"><div><h1>Settings</h1><div className="muted">Identity, guardrails and integrations</div></div></div>
+      {issues.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }} data-testid="config-issues">
+          <h2>Configuration problems ({issues.length})</h2>
+          <ul className="plain">{issues.map((i) => <li key={i.key + i.message}><span className={`badge ${i.level === "error" ? "bad" : "warn"}`}>{i.level}</span> <strong>{i.key}</strong>: {i.message}<div className="small muted">→ {i.fix}</div></li>)}</ul>
+          <div className="small muted">Shown for the web server's environment. The worker reads its own environment; in the provided docker-compose both use the same .env.</div>
+        </div>
+      )}
       <div className={`notice ${ready.ok ? "ok" : "warn"}`}>{ready.ok ? "Sender identity is complete: drafts can be approved." : `Missing: ${ready.missing.join(", ")}.`}</div>
       <div className="grid g2">
         <SettingsForm initial={s} />
         <div className="grid" style={{ alignContent: "start" }}>
+          <Diagnostics />
           <div className="card">
             <h2>Integrations</h2>
             <table><tbody>

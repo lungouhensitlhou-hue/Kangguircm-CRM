@@ -34,6 +34,9 @@ export function respond(body) {
       }),
     });
   }
+  if (/extract facts/.test(system)) {
+    return reply({ role: "assistant", content: JSON.stringify({ name: "Jane Smith", title: "Practice Manager" }) });
+  }
   if (/triage replies/.test(system)) {
     return reply({
       role: "assistant",

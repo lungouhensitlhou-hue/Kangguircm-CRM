@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@rcm/core/types";
-import { integrationStatus, listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
+import { validateConfig, workerStatus, integrationStatus, listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
 import { StatusBadge } from "@/components/Badge";
 import { ago } from "@/lib/format";
 
@@ -16,10 +16,14 @@ export default async function Dashboard() {
   ]);
   const ready = senderReady(settings);
   const integ = integrationStatus();
+  const [worker] = await Promise.all([workerStatus()]);
+  const blocking = validateConfig().filter((i) => i.level === "error");
   const max = Math.max(1, ...Object.values(stats.byStage));
   return (
     <>
       <div className="head"><div><h1>Dashboard</h1><div className="muted">Your outreach engine at a glance</div></div></div>
+      {!worker.alive && <div className="notice err" role="alert"><strong>The background worker is not running.</strong> Agents (discovery, research, drafting, sending) cannot work{worker.queued ? `, and ${worker.queued} job(s) are waiting` : ""}. Start the worker process with the same database (docker compose: the <code>worker</code> service). See <Link href="/settings">Settings → Connection test</Link>.</div>}
+      {blocking.length > 0 && <div className="notice err" role="alert"><strong>{blocking.length} configuration problem(s) will break features:</strong> {blocking.map((b) => b.key).join(", ")}. Details and fixes are in <Link href="/settings">Settings</Link>.</div>}
       {!ready.ok && <div className="notice warn">Before any email can be approved, complete <Link href="/settings">Settings</Link>: {ready.missing.join(", ")}. (CAN-SPAM requires a physical address and sender identity.)</div>}
       {!integ.llm && <div className="notice warn">No AI provider key found: research and drafting use rule-based fallbacks. Add any supported key (Anthropic, OpenAI, Gemini, Groq, Mistral, DeepSeek, OpenRouter, Ollama…) to the worker's environment. See Settings.</div>}
       <div className="grid g4" style={{ marginBottom: 14 }}>

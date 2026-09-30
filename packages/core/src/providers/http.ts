@@ -1,3 +1,5 @@
+import { hintFor } from "./hints";
+
 export interface PostOptions {
   fetchImpl?: typeof fetch;
   /** Delays between retries on 429/5xx/network errors. [] = no retry. */
@@ -24,7 +26,8 @@ export async function postJson(url: string, headers: Record<string, string>, bod
       });
       if (res.ok) return res;
       const text = (await res.text().catch(() => "")).slice(0, 400);
-      lastErr = new Error(`${label} API error ${res.status}: ${text}`);
+      const hint = hintFor(label, res.status, text);
+      lastErr = new Error(`${label} API error ${res.status}: ${text}${hint ? `\n→ ${hint}` : ""}`);
       if (res.status !== 429 && res.status < 500) throw Object.assign(lastErr, { fatal: true });
     } catch (e) {
       if ((e as any).fatal) throw e;

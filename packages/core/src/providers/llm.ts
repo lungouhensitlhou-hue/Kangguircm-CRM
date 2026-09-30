@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { z } from "zod";
+import { hintFor } from "./hints";
 
 export interface Usage { tokensIn: number; tokensOut: number }
 export interface ToolSpec { name: string; description: string; input_schema: { type: "object"; properties: Record<string, unknown>; required?: string[] } }
@@ -85,6 +86,14 @@ export function extractJsonObject(text: string): unknown {
 
 type ClientLike = Pick<Anthropic, "messages">;
 
+/** Adds an actionable hint to Anthropic SDK errors (bad key, no credits, unknown model...). */
+function explainAnthropic(e: unknown): Error {
+  const status = (e as any)?.status as number | undefined;
+  if (!status || !(e instanceof Error)) return e as Error;
+  const hint = hintFor("anthropic", status, e.message);
+  return hint && !e.message.includes("→") ? Object.assign(new Error(`anthropic API error ${status}: ${e.message}\n→ ${hint}`), { status }) : e;
+}
+
 export class AnthropicLLM implements LLM {
   readonly name: string;
   constructor(private client: ClientLike, readonly model: string) {
@@ -100,7 +109,7 @@ export class AnthropicLLM implements LLM {
       prompt: o.prompt,
       schema: o.schema,
       call: async (messages) => {
-        const res = await this.client.messages.create({ model: this.model, max_tokens: o.maxTokens ?? 8000, system: o.system, messages });
+        const res = await this.client.messages.create({ model: this.model, max_tokens: o.maxTokens ?? 8000, system: o.system, messages }).catch((e) => { throw explainAnthropic(e); });
         if (res.stop_reason === "refusal") throw new Error("model refused the request");
         return { text: this.text(res.content), usage: { tokensIn: res.usage.input_tokens, tokensOut: res.usage.output_tokens } };
       },
@@ -119,7 +128,7 @@ export class AnthropicLLM implements LLM {
         system: o.system,
         tools: o.tools as Anthropic.Tool[],
         messages,
-      });
+      }).catch((e) => { throw explainAnthropic(e); });
       usage.tokensIn += res.usage.input_tokens;
       usage.tokensOut += res.usage.output_tokens;
       if (res.stop_reason === "refusal") return { text: "I can't help with that request.", usage, steps: steps + 1 };

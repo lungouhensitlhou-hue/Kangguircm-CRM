@@ -208,3 +208,27 @@ test("CSV import creates leads and contacts", async ({ page }) => {
   await expect(page.getByText("pat@csv-uc.test")).toBeVisible();
   await expect(page.getByText("decision maker")).toBeVisible();
 });
+
+test("resilience: config warnings, connection test, no worker banner, friendly 404", async ({ page }) => {
+  await login(page);
+  // worker is running, so no red banner on the dashboard
+  await expect(page.getByText("The background worker is not running")).toHaveCount(0);
+  await page.goto("/settings");
+  // this e2e stack deliberately runs production mode with test-only settings; the validator must call them out with fixes
+  const issues = page.getByTestId("config-issues");
+  await expect(issues).toContainText("APP_BASE_URL points at this machine");
+  await expect(issues).toContainText("ALLOW_PRIVATE_FETCH");
+  await expect(issues).toContainText("No email provider is configured");
+  await page.getByRole("button", { name: "Full test" }).click();
+  const d = page.getByTestId("diagnostics");
+  await expect(d).toContainText("Background worker", { timeout: 60_000 });
+  await expect(d.locator("li", { hasText: "Database" })).toContainText("PASS");
+  await expect(d.locator("li", { hasText: "Background worker" })).toContainText("PASS");
+  await expect(d.locator("li", { hasText: "structured output" })).toContainText("PASS");
+  await expect(d.locator("li", { hasText: "tool calling" })).toContainText("PASS");
+  await expect(d.locator("li", { hasText: "Lead registry" })).toContainText("PASS");
+  await expect(d.locator("li", { hasText: "Email provider (dry-run)" })).toContainText("WARN");
+  await page.goto("/leads/00000000-0000-0000-0000-000000000000");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Back to the dashboard" })).toBeVisible();
+});

@@ -91,3 +91,17 @@ export async function migrate(): Promise<string[]> {
   }
   return applied;
 }
+
+/** Startup-friendly migrate: waits for the database to accept connections (containers often start together). */
+export async function migrateWithRetry(attempts = 30, delayMs = 2000, log: (m: string) => void = console.error): Promise<string[]> {
+  for (let i = 1; ; i++) {
+    try { return await migrate(); }
+    catch (e) {
+      const msg = (e as Error).message;
+      const transient = /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|the database system is (starting up|shutting down)|Connection terminated/i.test(msg);
+      if (!transient || i >= attempts) throw new Error(`Database not usable after ${i} attempt(s): ${msg}. Check DATABASE_URL and that Postgres is running.`);
+      log(`[db] waiting for database (${i}/${attempts}): ${msg}`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+}

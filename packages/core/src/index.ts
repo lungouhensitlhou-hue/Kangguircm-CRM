@@ -25,3 +25,6 @@ export { DiscoverInput } from "./agents/discover";
 export * from "./providers/mx";
 export * from "./tracking";
 export * from "./providers/email-events";
+export * from "./config";
+export * from "./diagnostics";
+export * from "./providers/hints";
