@@ -8,7 +8,7 @@ export const GET = route(async (req) => {
   const p = new URL(req.url).searchParams;
   return listLeads({
     q: p.get("q") ?? undefined, stage: p.get("stage") ?? undefined, state: p.get("state") ?? undefined,
-    specialty: p.get("specialty") ?? undefined, minScore: p.get("minScore") ? Number(p.get("minScore")) : undefined,
+    specialty: p.get("specialty") ?? undefined, tag: p.get("tag") ?? undefined, minScore: p.get("minScore") ? Number(p.get("minScore")) : undefined,
     sort: (p.get("sort") as any) ?? undefined, limit: Number(p.get("limit") ?? 50), offset: Number(p.get("offset") ?? 0),
   });
 });

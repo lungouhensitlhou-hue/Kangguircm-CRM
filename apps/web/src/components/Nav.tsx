@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 const ITEMS = [
-  ["/", "Dashboard"], ["/leads", "Leads"], ["/pipeline", "Pipeline"], ["/deals", "Deals"], ["/tasks", "Tasks"], ["/approvals", "Approvals"], ["/runs", "Agent runs"], ["/chat", "Ask agents"], ["/settings", "Settings"],
+  ["/", "Dashboard"], ["/leads", "Leads"], ["/pipeline", "Pipeline"], ["/deals", "Deals"], ["/tasks", "Tasks"], ["/approvals", "Approvals"], ["/templates", "Templates"], ["/sequences", "Sequences"], ["/runs", "Agent runs"], ["/chat", "Ask agents"], ["/settings", "Settings"],
 ] as const;
 
 export function Nav({ pending, tasksDue, email }: { pending: number; tasksDue: number; email: string }) {

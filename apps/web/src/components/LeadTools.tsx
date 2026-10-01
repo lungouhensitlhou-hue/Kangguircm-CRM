@@ -86,12 +86,16 @@ export function AddLeadPanel() {
 
 export function BulkBar({ ids }: { ids: string[] }) {
   const a = useAction();
+  const [tag, setTag] = useState("");
   return (
     <div className="row" style={{ marginBottom: 10, alignItems: "center" }}>
       <span className="muted fit">Bulk on the {ids.length} leads shown:</span>
       <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "research" }), "Research queued for all shown leads.")}>Research all</button>
       <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "find_contacts" }), "Contact finder queued for all shown leads.")}>Find contacts for all</button>
       <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "draft_outreach" }), "Drafting queued (drafts land in Approvals).")}>Draft outreach for all</button>
+      <input aria-label="Tag" className="fit" style={{ maxWidth: 120 }} value={tag} onChange={(e) => setTag(e.target.value)} placeholder="tag" />
+      <button className="fit sm" disabled={a.busy || !ids.length || !tag.trim()} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "tag", tag }), "Tagged.")}>Add tag</button>
+      <button className="fit sm" disabled={a.busy || !ids.length || !tag.trim()} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "untag", tag }), "Tag removed.")}>Remove tag</button>
       {a.ok && <span className="badge ok fit">{a.ok}</span>}{a.error && <span className="badge bad fit">{a.error}</span>}
     </div>
   );

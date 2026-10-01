@@ -50,7 +50,11 @@ async function fakeSmtp(b: Behavior = {}) {
   let conns = 0, active = 0, maxActive = 0;
   const server = net.createServer((sock) => {
     conns++; active++; maxActive = Math.max(maxActive, active);
-    sock.on("close", () => active--);
+    // A connection counts as finished when it says QUIT (the client waits for our 221 before moving on), which is
+    // deterministic; waiting for the socket 'close' event races with the next connection.
+    let done = false;
+    const finish = () => { if (!done) { done = true; active--; } };
+    sock.on("close", finish);
     sock.setEncoding("utf8");
     sock.write(b.greeting ?? "220 fake.test ESMTP ready\r\n");
     let buf = "";
@@ -70,7 +74,7 @@ async function fakeSmtp(b: Behavior = {}) {
           else if (b.catchAll || b.users?.includes(addr)) sock.write("250 2.1.5 ok\r\n");
           else sock.write("550 5.1.1 <" + addr + ">: Recipient address rejected: User unknown\r\n");
         } else if (up === "RSET") sock.write("250 ok\r\n");
-        else if (up === "QUIT") { sock.write("221 bye\r\n"); sock.end(); }
+        else if (up === "QUIT") { finish(); sock.write("221 bye\r\n"); sock.end(); }
         else if (up === "DATA") sock.write("354 go ahead\r\n");
         else sock.write("500 unknown\r\n");
       }

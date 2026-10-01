@@ -99,6 +99,7 @@ export interface LeadFilter {
   state?: string;
   specialty?: string;
   minScore?: number;
+  tag?: string;
   sort?: "score" | "recent" | "name";
   limit?: number;
   offset?: number;
@@ -117,6 +118,7 @@ export async function listLeads(f: LeadFilter = {}): Promise<{ rows: LeadRow[]; 
   if (f.state) add("o.state = ?", f.state.toUpperCase());
   if (f.specialty) add("o.specialty ILIKE ?", `%${f.specialty}%`);
   if (f.minScore) add("l.score >= ?", f.minScore);
+  if (f.tag) add("l.tags @> ARRAY[?]::text[]", normalizeTag(f.tag));
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const order = f.sort === "name" ? "o.name ASC" : f.sort === "recent" ? "l.created_at DESC" : "l.score DESC, l.created_at DESC";
   const total = (await queryOne<{ n: number }>(`SELECT count(*)::int AS n FROM leads l JOIN organizations o ON o.id = l.organization_id ${w}`, params))!.n;
@@ -186,8 +188,9 @@ async function syncDealAndTasks(leadId: string, stage: Stage): Promise<void> {
   }
 }
 
-export async function updateLead(leadId: string, patch: { notes?: string; stage?: Stage; next_action_at?: string | null }, actor = "user"): Promise<void> {
+export async function updateLead(leadId: string, patch: { notes?: string; stage?: Stage; next_action_at?: string | null; tags?: string[] }, actor = "user"): Promise<void> {
   if (patch.stage) await setStage(leadId, patch.stage, actor);
+  if (patch.tags) await setTags(leadId, patch.tags);
   if (patch.notes !== undefined) await query("UPDATE leads SET notes = $2, updated_at = now() WHERE id = $1", [leadId, patch.notes]);
   if (patch.next_action_at !== undefined) await query("UPDATE leads SET next_action_at = $2, updated_at = now() WHERE id = $1", [leadId, patch.next_action_at]);
 }
@@ -279,4 +282,65 @@ export async function importRows(rows: Record<string, string>[]): Promise<{ crea
     }
   }
   return { created, existing, skipped, contacts };
+}
+
+// ---- tags, saved views, export -----------------------------------------------------------------------------
+
+export const normalizeTag = (t: string) => t.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9_-]/g, "").slice(0, 30);
+
+export async function setTags(leadId: string, tags: string[]): Promise<string[]> {
+  const clean = [...new Set(tags.map(normalizeTag).filter(Boolean))];
+  if (clean.length > 20) throw new Error("At most 20 tags per lead");
+  await query("UPDATE leads SET tags = $2::text[], updated_at = now() WHERE id = $1", [leadId, clean]);
+  return clean;
+}
+
+export async function bulkTag(ids: string[], tag: string, mode: "add" | "remove"): Promise<number> {
+  const t = normalizeTag(tag);
+  if (!t) throw new Error("Tag is required");
+  const rows = await query(
+    mode === "add"
+      ? "UPDATE leads SET tags = array_append(tags, $2), updated_at = now() WHERE id = ANY($1::uuid[]) AND NOT (tags @> ARRAY[$2]::text[]) AND cardinality(tags) < 20 RETURNING id"
+      : "UPDATE leads SET tags = array_remove(tags, $2), updated_at = now() WHERE id = ANY($1::uuid[]) AND tags @> ARRAY[$2]::text[] RETURNING id",
+    [ids, t],
+  );
+  return rows.length;
+}
+
+export const VIEW_KEYS = ["q", "stage", "state", "specialty", "tag", "minScore", "sort"] as const;
+export interface SavedView { id: string; name: string; filters: Record<string, string>; created_at: string }
+
+export async function listViews(): Promise<SavedView[]> { return query<SavedView>("SELECT * FROM saved_views ORDER BY name"); }
+export async function saveView(name: string, filters: Record<string, unknown>): Promise<SavedView> {
+  const n = name.trim().slice(0, 60);
+  if (!n) throw new Error("Name is required");
+  const clean: Record<string, string> = {};
+  for (const k of VIEW_KEYS) if (filters[k] !== undefined && String(filters[k]).trim() !== "") clean[k] = String(filters[k]).trim().slice(0, 100);
+  if (!Object.keys(clean).length) throw new Error("Set at least one filter before saving a view");
+  return (await queryOne<SavedView>("INSERT INTO saved_views (name, filters) VALUES ($1,$2::jsonb) ON CONFLICT (name) DO UPDATE SET filters = EXCLUDED.filters RETURNING *", [n, JSON.stringify(clean)]))!;
+}
+export async function deleteView(id: string): Promise<void> { if (/^[0-9a-f-]{36}$/i.test(id)) await query("DELETE FROM saved_views WHERE id = $1", [id]); }
+
+/** RFC 4180 CSV. Cells that start with = + - @ are prefixed with ' so spreadsheets never execute them as formulas. */
+export function toCsv(rows: (string | number | null | undefined)[][]): string {
+  const cell = (v: string | number | null | undefined) => {
+    let s = v === null || v === undefined ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n";
+}
+
+/** Leads + their best contact, for the current filter (max 5000). */
+export async function exportLeadsCsv(f: LeadFilter = {}): Promise<string> {
+  const { rows } = await listLeads({ ...f, limit: 500, offset: 0 });
+  const all = [...rows];
+  for (let off = 500; all.length === off && off < 5000; off += 500) { const more = (await listLeads({ ...f, limit: 500, offset: off })).rows; all.push(...more); if (more.length < 500) break; }
+  const header = ["practice", "npi", "specialty", "address", "city", "state", "zip", "phone", "website", "stage", "score", "tags", "contact_name", "contact_title", "contact_email", "email_status", "email_source", "contact_phone"];
+  const out: (string | number | null)[][] = [header];
+  for (const l of all) {
+    const c = (await query<any>("SELECT * FROM contacts WHERE organization_id = $1 ORDER BY (email IS NOT NULL AND email_status NOT IN ('invalid','bounced')) DESC, is_decision_maker DESC, (full_name IS NOT NULL) DESC LIMIT 1", [l.organization_id]))[0];
+    out.push([l.org.name, l.org.npi, l.org.specialty, l.org.address, l.org.city, l.org.state, l.org.zip, l.org.phone, l.org.website, l.stage, l.score, (l.tags ?? []).join(";"), c?.full_name, c?.title, c?.email, c?.email ? c.email_status : "", c?.email ? c.email_source : "", c?.phone]);
+  }
+  return toCsv(out);
 }

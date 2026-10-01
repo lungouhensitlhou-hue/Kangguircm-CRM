@@ -1,13 +1,14 @@
 import { z } from "zod";
-import { enqueueRun, setStage, STAGES } from "@rcm/core";
+import { bulkTag, enqueueRun, setStage, STAGES } from "@rcm/core";
 import { body, route } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
-const Bulk = z.object({ ids: z.array(z.string().uuid()).min(1).max(500), action: z.enum(["research", "draft_outreach", "find_contacts", "stage"]), stage: z.enum(STAGES).optional() });
+const Bulk = z.object({ ids: z.array(z.string().uuid()).min(1).max(500), action: z.enum(["research", "draft_outreach", "find_contacts", "stage", "tag", "untag"]), stage: z.enum(STAGES).optional(), tag: z.string().max(40).optional() });
 
 export const POST = route(async (req, { user }) => {
   const b = Bulk.parse(await body(req));
   let n = 0;
+  if (b.action === "tag" || b.action === "untag") return { ok: true, count: await bulkTag(b.ids, b.tag ?? "", b.action === "tag" ? "add" : "remove") };
   for (const id of b.ids) {
     if (b.action === "stage") { if (!b.stage) throw new Error("stage is required"); await setStage(id, b.stage, user!.email); n++; continue; }
     const kind = b.action === "research" ? "research" : b.action === "find_contacts" ? "contacts" : "outreach";

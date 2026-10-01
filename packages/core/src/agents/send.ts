@@ -3,6 +3,7 @@ import { getSettings } from "../settings";
 import { isSuppressed, isWithinSendWindow, nextSendWindow, senderReady, sentToday, unsubscribeApiUrl } from "../compliance";
 import { setStage, getLead } from "../leads";
 import { openPixelUrl, textToHtml } from "../tracking";
+import { sequenceSteps } from "../sequences";
 import { enqueueRun } from "../queue";
 import type { Message } from "../types";
 import { PermanentError, type Handler } from "./runtime";
@@ -56,7 +57,7 @@ export const sendHandler: Handler = async (ctx) => {
 
   const lead = await getLead(msg.lead_id);
   if (lead && !["replied", "meeting", "won", "lost", "disqualified"].includes(lead.stage)) await setStage(lead.id, "contacted", "agent");
-  const nextDays = s.followupDays[msg.step - 1];
+  const nextDays = (await sequenceSteps(lead ?? {}))[msg.step]?.delayDays;
   await query("UPDATE leads SET next_action_at = $2, updated_at = now() WHERE id = $1", [msg.lead_id, nextDays ? new Date(now.getTime() + nextDays * 86400_000) : null]);
   await ctx.log(`Sent step ${msg.step} to ${to} via ${ctx.deps.mailer.name}`);
   return { messageId: msg.id, provider: ctx.deps.mailer.name };

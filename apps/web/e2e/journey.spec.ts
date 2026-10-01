@@ -320,3 +320,79 @@ test("tasks and deals: replies create to-dos, Meeting opens a deal, won closes i
   await expect(page.locator(".head .badge", { hasText: "Won" })).toBeVisible();
   await expect(page.getByText("E2e Heart Clinic - RCM services · won")).toBeVisible();
 });
+
+test("templates, sequences, tags, saved views and export", async ({ page }) => {
+  await login(page);
+  // template: preview with sample data, and a clear error for an unknown merge field
+  await page.goto("/templates");
+  const nt = page.getByTestId("new-template");
+  await nt.getByLabel("Name").fill("Denials A");
+  await nt.getByLabel("Subject").fill("Fewer denials at {{practice}}");
+  await nt.getByLabel("Body").fill("Hi {{first_name|there}},\n\nI noticed {{practice}} in {{city}}. We help {{specialty|medical}} practices cut denials.\n\nOpen to a short call?\n\n{{sender_first_name}}");
+  await expect(nt.getByTestId("preview")).toContainText("Fewer denials at Riverside Orthopedics");
+  await nt.getByLabel("Subject").fill("Hello {{nonsense}}");
+  await nt.getByRole("button", { name: "Create template" }).click();
+  await expect(nt.locator(".notice.err")).toContainText("Unknown merge field {{nonsense}}");
+  await nt.getByLabel("Subject").fill("Fewer denials at {{practice}}");
+  await nt.getByRole("button", { name: "Create template" }).click();
+  await expect(page.getByTestId("template").filter({ hasText: "Denials A" })).toBeVisible();
+
+  // sequence using it, made default
+  await page.goto("/sequences");
+  const ns = page.getByTestId("new-sequence");
+  await ns.getByLabel("Name").fill("E2E sequence");
+  await ns.locator("#st-new-0").selectOption({ label: "Denials A" });
+  await ns.getByRole("button", { name: "Create sequence" }).click();
+  const seq = page.getByTestId("sequence").filter({ hasText: "E2E sequence" });
+  await expect(seq).toBeVisible();
+  await seq.getByRole("button", { name: "Make default" }).click();
+  await expect(page.getByTestId("sequence").filter({ hasText: "E2E sequence" }).locator(".badge", { hasText: "default" })).toBeVisible();
+
+  // a new lead's first email is drafted from the template
+  await page.goto("/leads");
+  await page.locator("#a-name").fill("Template Clinic");
+  await page.locator("#a-city").fill("Austin");
+  await page.locator("#a-state").fill("TX");
+  await page.locator("#a-cn").fill("Jane Doe");
+  await page.locator("#a-ct").fill("Practice Manager");
+  await page.locator("#a-ce").fill("jane@template-clinic.test");
+  await page.getByRole("button", { name: "Add lead" }).click();
+  await expect(page.getByText("Lead added.")).toBeVisible();
+  await page.getByLabel("Search", { exact: true }).fill("Template Clinic");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await page.getByRole("link", { name: "Template Clinic" }).click();
+  await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/);
+  await page.getByLabel("Tags (comma-separated)").fill("Pilot, e2e");
+  await page.getByRole("button", { name: "Save tags" }).click();
+  await expect(page.getByRole("status")).toContainText("Tags saved.");
+  await page.getByRole("button", { name: "Draft email now" }).click();
+  await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
+  await expect(page.getByTestId("run-log")).toContainText('via template "Denials A"');
+  await page.goto("/approvals");
+  const draft = page.getByTestId("draft").filter({ hasText: "Template Clinic" });
+  await expect(draft.getByLabel("Subject")).toHaveValue("Fewer denials at Template Clinic");
+  await expect(draft.getByLabel("Message")).toHaveValue(/Hi Jane,/);
+
+  // pause follow-ups from the lead page
+  await page.goto("/leads?q=Template Clinic");
+  await page.getByRole("link", { name: "Template Clinic" }).first().click();
+  await page.getByLabel("Pause follow-ups for this lead").check();
+  await expect(page.getByRole("status")).toContainText("Follow-ups paused.");
+
+  // tag filter, saved view, CSV export
+  await page.goto("/leads?tag=pilot");
+  await expect(page.getByRole("link", { name: "Template Clinic" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "E2e Orthopedic Associates" })).toHaveCount(0);
+  await page.getByLabel("View name").fill("Pilot leads");
+  await page.getByRole("button", { name: "Save view" }).click();
+  await expect(page.getByRole("link", { name: "Pilot leads" })).toBeVisible();
+  const csv = await page.request.get("/api/export/leads?tag=pilot");
+  expect(csv.headers()["content-type"]).toContain("text/csv");
+  expect(csv.headers()["content-disposition"]).toContain("attachment");
+  const text = await csv.text();
+  expect(text.split("\r\n")[0]).toMatch(/^practice,npi,specialty/);
+  expect(text).toContain("Template Clinic");
+  expect(text).toContain("jane@template-clinic.test");
+  expect(text).not.toContain("E2e Orthopedic");
+  expect((await page.context().request.get("/api/export/leads", { headers: { cookie: "" } })).status()).toBe(401);
+});

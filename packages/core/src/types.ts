@@ -69,6 +69,9 @@ export interface Lead {
   score: number;
   score_reasons: string[];
   notes: string;
+  tags: string[];
+  sequence_id: string | null;
+  sequence_paused: boolean;
   next_action_at: string | null;
   created_at: string;
   updated_at: string;
@@ -107,6 +110,8 @@ export interface Message {
   body: string;
   status: "draft" | "approved" | "rejected" | "sent" | "failed" | "received" | "cancelled";
   unsub_token: string | null;
+  template_id: string | null;
+  variant: string | null;
   classification: string | null;
   meta: Record<string, any>;
   provider: string | null;

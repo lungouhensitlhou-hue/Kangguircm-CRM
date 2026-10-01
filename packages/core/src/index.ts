@@ -33,3 +33,5 @@ export * from "./providers/smtp-verify";
 export * from "./agents/domain-finder";
 export * from "./tasks";
 export * from "./deals";
+export * from "./templates";
+export * from "./sequences";

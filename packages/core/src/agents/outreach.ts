@@ -3,6 +3,8 @@ import { query, queryOne } from "../db";
 import { getContacts, getLead, setStage } from "../leads";
 import { assembleBody, isGenericMailbox, isSuppressed, isValidEmail, newUnsubToken, normalizeEmail } from "../compliance";
 import { getSettings, type Settings } from "../settings";
+import { pickVariant, getTemplate, renderTemplate } from "../templates";
+import { sequenceSteps } from "../sequences";
 import { enqueueRun } from "../queue";
 import type { Contact, Message, Organization } from "../types";
 import { PermanentError, type Handler } from "./runtime";
@@ -142,6 +144,7 @@ export const outreachHandler: Handler = async (ctx) => {
   const existing = await queryOne("SELECT 1 FROM messages WHERE lead_id = $1 AND direction = 'outbound' AND step = $2 AND status IN ('draft','approved','sent')", [lead.id, step]);
   if (existing) { await ctx.log(`Step ${step} already drafted/sent`); return { skipped: "exists" }; }
 
+  if (lead.sequence_paused && step > 1) { await ctx.log("Sequence is paused for this lead; not drafting follow-ups"); return { skipped: "paused" }; }
   const contact = await pickContact(lead.organization_id, s.allowGuessedEmails);
   if (!contact) {
     await ctx.log("No reachable, non-suppressed contact email; cannot draft. Add a contact or re-run research.", undefined, "warn");
@@ -166,7 +169,22 @@ export const outreachHandler: Handler = async (ctx) => {
 
   let draft: Draft | null = null;
   let how = "template";
-  if (ctx.deps.llm) {
+  let templateId: string | null = null;
+  let variant: string | null = null;
+
+  // A sequence step can point at a human-written template (or several, for an A/B test) instead of the AI.
+  const stepDef = (await sequenceSteps(lead))[step - 1];
+  if (stepDef?.templateIds?.length) {
+    const tpl = await getTemplate(pickVariant(stepDef.templateIds, lead.id));
+    if (tpl?.active) {
+      try {
+        const fn = firstName(contact.full_name);
+        const r = renderTemplate(tpl, { first_name: fn ?? undefined, full_name: contact.full_name, title: contact.title, practice: lead.org.name, city: lead.org.city, state: lead.org.state, specialty: lead.org.specialty, ehr: facts.ehr, sender_name: s.senderName, sender_first_name: firstName(s.senderName), company: s.companyName });
+        draft = r; how = `template "${tpl.name}"`; templateId = tpl.id; variant = tpl.name;
+      } catch (e) { await ctx.log(`Template "${tpl.name}" not used: ${(e as Error).message}; drafting normally`, undefined, "warn"); }
+    } else await ctx.log("The sequence's template is missing or inactive; drafting normally", undefined, "warn");
+  }
+  if (!draft && ctx.deps.llm) {
     try {
       const { data, usage } = await ctx.deps.llm.json({ system: OUTREACH_SYSTEM, prompt: buildDraftPrompt(facts, s), schema: DraftSchema, maxTokens: 3000 });
       ctx.addUsage(usage);
@@ -205,9 +223,9 @@ export const outreachHandler: Handler = async (ctx) => {
   const to = normalizeEmail(contact.email!);
   const status = s.autoApprove ? "approved" : "draft";
   const msg = await queryOne<Message>(
-    `INSERT INTO messages (lead_id, contact_id, step, to_email, subject, body, status, unsub_token, approved_by, approved_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [lead.id, contact.id, step, to, draft.subject.trim(), assembleBody(draft.body.trim(), s, token), status, token, s.autoApprove ? "auto" : null, s.autoApprove ? new Date() : null],
+    `INSERT INTO messages (lead_id, contact_id, step, to_email, subject, body, status, unsub_token, approved_by, approved_at, template_id, variant)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [lead.id, contact.id, step, to, draft.subject.trim(), assembleBody(draft.body.trim(), s, token), status, token, s.autoApprove ? "auto" : null, s.autoApprove ? new Date() : null, templateId, variant],
   );
   if (lead.stage !== "contacted" && lead.stage !== "replied") await setStage(lead.id, "outreach_drafted", "agent");
   await ctx.log(`Drafted step ${step} email to ${to} via ${how} (${status})`, { messageId: msg!.id });
