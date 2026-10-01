@@ -25,7 +25,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   disqualified: "Disqualified",
 };
 
-export type RunKind = "discover" | "research" | "outreach" | "send" | "chat" | "sweep" | "smoke" | "reply";
+export type RunKind = "discover" | "research" | "outreach" | "send" | "chat" | "sweep" | "smoke" | "reply" | "contacts";
 export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
 export interface Organization {
@@ -42,6 +42,7 @@ export interface Organization {
   website: string | null;
   ehr: string | null;
   size_estimate: string | null;
+  website_confidence?: number | null;
   aliases: string[];
   source: string;
 }
@@ -53,6 +54,8 @@ export interface Contact {
   title: string | null;
   email: string | null;
   email_status: string;
+  email_source: "published" | "pattern";
+  email_confidence: number;
   phone: string | null;
   is_decision_maker: boolean;
   source: string;

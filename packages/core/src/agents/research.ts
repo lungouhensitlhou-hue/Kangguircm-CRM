@@ -200,7 +200,11 @@ export const researchHandler: Handler = async (ctx) => {
   await setStage(lead.id, "researched", "agent");
   await ctx.log(`Profile saved: score ${score}, ${contactCount} contact(s), ${pages.length} page(s) read`);
 
-  if (ctx.run.input.thenOutreach && contacts.some((c) => c.email && c.email_status !== "invalid")) {
+  // No reachable decision-maker yet: let the contact finder look (registry official, address patterns, verification), then draft.
+  if (!dmEmail && process.env.AGENT_CONTACTS !== "off") {
+    await enqueueRun({ kind: "contacts", leadId: lead.id, parentId: ctx.run.id, input: { thenOutreach: !!ctx.run.input.thenOutreach }, idempotencyKey: `contacts:${lead.id}:${ctx.run.id}`, createdBy: "agent" });
+    await ctx.log("No decision-maker email published; queued the contact finder");
+  } else if (ctx.run.input.thenOutreach && contacts.some((c) => c.email && c.email_status !== "invalid")) {
     await enqueueRun({ kind: "outreach", leadId: lead.id, parentId: ctx.run.id, input: { step: 1 }, idempotencyKey: `outreach:${lead.id}:1`, createdBy: "agent" });
     await ctx.log("Queued outreach drafting");
   }

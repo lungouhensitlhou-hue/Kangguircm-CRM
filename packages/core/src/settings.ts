@@ -17,6 +17,8 @@ export const SettingsSchema = z.object({
   autoApprove: z.boolean(),
   /** Adds a small HTML part with a self-hosted 1px image so opens can be counted (approximate; may reduce inbox placement). */
   trackOpens: z.boolean(),
+  /** Guessed (pattern-based) addresses are only used when mailbox-verified. Turn on to also use unverified/catch-all guesses. */
+  allowGuessedEmails: z.boolean(),
   offer: z.string(),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   followupDays: [3, 7],
   autoApprove: false,
   trackOpens: false,
+  allowGuessedEmails: false,
   offer:
     "end-to-end revenue cycle management (coding, claims submission, denial management and A/R follow-up) that lifts collections and shortens days in A/R",
 };

@@ -28,3 +28,6 @@ export * from "./providers/email-events";
 export * from "./config";
 export * from "./diagnostics";
 export * from "./providers/hints";
+export * from "./providers/email-patterns";
+export * from "./providers/smtp-verify";
+export * from "./agents/domain-finder";

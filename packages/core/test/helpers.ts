@@ -13,7 +13,7 @@ export async function setupDb() {
 }
 export async function resetDb() {
   await query(
-    "TRUNCATE organizations, contacts, leads, research_profiles, messages, suppressions, agent_runs, agent_events, chat_messages, settings, audit_log RESTART IDENTITY CASCADE",
+    "TRUNCATE organizations, contacts, leads, research_profiles, messages, suppressions, agent_runs, agent_events, chat_messages, settings, audit_log, email_events, email_patterns RESTART IDENTITY CASCADE",
   );
 }
 export async function teardownDb() {
@@ -45,6 +45,7 @@ export function makeDeps(over: Partial<Deps> = {}): Deps & { mailer: DryRunMaile
     npi: new FakeNpi([]),
     web: new HttpWebTools({ allowPrivate: true, respectRobots: true }),
     mailer: new DryRunMailer(),
+    domainGuess: false, // hermetic: tests must not guess real domains on the internet
     ...over,
   } as any;
 }

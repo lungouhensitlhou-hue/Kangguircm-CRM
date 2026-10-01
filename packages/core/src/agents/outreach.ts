@@ -115,14 +115,19 @@ export function templateDraft(f: DraftFacts, s: Settings): Draft {
   };
 }
 
-/** Pick the best reachable contact: named decision-maker > any named person > shared inbox. Skips suppressed. */
-export async function pickContact(orgId: string): Promise<Contact | null> {
-  const contacts = (await getContacts(orgId)).filter((c) => c.email && isValidEmail(c.email) && c.email_status !== "bounced" && c.email_status !== "invalid");
+/**
+ * Pick the best reachable contact: published decision-maker > published person > verified guess > shared inbox.
+ * Skips suppressed/bounced/invalid, and pattern-guessed addresses unless they are mailbox-verified (or the operator allowed guesses).
+ */
+export async function pickContact(orgId: string, allowGuessed = false): Promise<Contact | null> {
+  const contacts = (await getContacts(orgId)).filter((c) =>
+    c.email && isValidEmail(c.email) && c.email_status !== "bounced" && c.email_status !== "invalid" &&
+    (c.email_source !== "pattern" || c.email_status === "verified" || allowGuessed));
   const ranked = contacts.sort((a, b) => rank(b) - rank(a));
   for (const c of ranked) if (!(await isSuppressed(c.email!))) return c;
   return null;
 }
-const rank = (c: Contact) => (c.is_decision_maker && c.full_name ? 4 : 0) + (c.full_name ? 2 : 0) + (c.email && !isGenericMailbox(c.email) ? 1 : 0);
+const rank = (c: Contact) => (c.is_decision_maker && c.full_name ? 4 : 0) + (c.full_name ? 2 : 0) + (c.email && !isGenericMailbox(c.email) ? 1 : 0) + (c.email_source === "published" ? 0.5 : 0) + (c.email_confidence ?? 0) / 1000;
 
 export const outreachHandler: Handler = async (ctx) => {
   const leadId = ctx.run.lead_id ?? (ctx.run.input.leadId as string);
@@ -137,7 +142,7 @@ export const outreachHandler: Handler = async (ctx) => {
   const existing = await queryOne("SELECT 1 FROM messages WHERE lead_id = $1 AND direction = 'outbound' AND step = $2 AND status IN ('draft','approved','sent')", [lead.id, step]);
   if (existing) { await ctx.log(`Step ${step} already drafted/sent`); return { skipped: "exists" }; }
 
-  const contact = await pickContact(lead.organization_id);
+  const contact = await pickContact(lead.organization_id, s.allowGuessedEmails);
   if (!contact) {
     await ctx.log("No reachable, non-suppressed contact email; cannot draft. Add a contact or re-run research.", undefined, "warn");
     return { skipped: "no_contact" };

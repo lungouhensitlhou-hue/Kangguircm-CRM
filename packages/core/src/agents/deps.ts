@@ -5,6 +5,7 @@ import { NppesClient } from "../providers/npi";
 import { HttpWebTools } from "../providers/web";
 import { BrokenMailer, mailerFromEnv, type Mailer } from "../providers/mailer";
 import { alwaysDeliverable, dnsMxCheck } from "../providers/mx";
+import { createSmtpVerifier } from "../providers/smtp-verify";
 
 /**
  * Production wiring. Two escape hatches exist purely for local/e2e testing:
@@ -24,6 +25,8 @@ export function depsFromEnv(env: Record<string, string | undefined> = process.en
   return {
     llm,
     fastLlm,
+    smtpVerify: env.SMTP_VERIFY === "on" ? createSmtpVerifier({ heloDomain: env.SMTP_VERIFY_HELO || new URL(env.APP_BASE_URL || "http://localhost").hostname, mailFrom: env.SMTP_VERIFY_FROM || `verify@${new URL(env.APP_BASE_URL || "http://localhost").hostname}` }) : undefined,
+    domainGuess: env.AGENT_DOMAIN_GUESS !== "off",
     mxCheck: env.SKIP_MX_CHECK === "1" ? alwaysDeliverable : dnsMxCheck(),
     npi: new NppesClient(fetch, env.NPPES_BASE_URL || undefined),
     web: new HttpWebTools({ allowPrivate: env.ALLOW_PRIVATE_FETCH === "1", searcher: safe("Web search disabled", () => searcherFromEnv(env), null) }),

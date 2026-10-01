@@ -6,6 +6,7 @@ import type { NpiClient } from "../providers/npi";
 import type { WebTools } from "../providers/web";
 import type { Mailer } from "../providers/mailer";
 import type { MxCheck } from "../providers/mx";
+import type { EmailVerifier } from "../providers/smtp-verify";
 
 export interface Deps {
   llm: LLM | null;
@@ -13,6 +14,10 @@ export interface Deps {
   fastLlm?: LLM | null;
   /** Domain can receive mail? Defaults to "yes" when omitted. */
   mxCheck?: MxCheck;
+  /** Mailbox verifier (SMTP RCPT probing). Absent = guessed addresses stay unverified. */
+  smtpVerify?: EmailVerifier;
+  /** Guess likely website domains from the practice name when none is known (default true). */
+  domainGuess?: boolean;
   npi: NpiClient;
   web: WebTools;
   mailer: Mailer;
