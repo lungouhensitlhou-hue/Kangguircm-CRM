@@ -1,0 +1,25 @@
+# Render Blueprint: web + agent worker in one free service. Database: any Postgres (Neon free tier works).
+services:
+  - type: web
+    name: kangguircm-crm
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: RUN_WORKER_INLINE
+        value: "on"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      # AI: set ONE of these in the dashboard (see .env.example): GEMINI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
+      - key: GEMINI_API_KEY
+        sync: false

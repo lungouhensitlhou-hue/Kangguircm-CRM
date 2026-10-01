@@ -18,4 +18,5 @@ FROM base AS run
 ENV NODE_ENV=production
 COPY --from=build /app /app
 EXPOSE 3000
-CMD ["npm", "run", "start", "-w", "@rcm/web"]
+# Default: migrate + web + worker in one container (free hosts). docker-compose overrides this per service.
+CMD ["node", "scripts/start-all.mjs"]

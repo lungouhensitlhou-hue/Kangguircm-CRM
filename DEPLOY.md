@@ -1,5 +1,17 @@
 # Deployment checklist
 
+## Free deploy in ~10 minutes (Neon + Render)
+The container runs migrations, the web app and the agent worker together (`scripts/start-all.mjs`), so one free web service is enough.
+
+1. **Database:** create a free project at neon.tech, copy the connection string (it ends with `?sslmode=require`).
+2. **Host:** push this repo to GitHub, then on render.com choose New → Blueprint and select the repo (it reads `render.yaml`).
+3. **Secrets:** in the Render dashboard fill `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (12+ chars), `APP_BASE_URL` (your `https://<name>.onrender.com` address) and one AI key (`GEMINI_API_KEY` has a free tier; or any key from `.env.example`). `SESSION_SECRET` is generated for you. Never paste keys into chat or commit them.
+4. Open the site, sign in, go to **Settings → Connection test** and fix any WARN/FAIL.
+5. **Keep it awake:** the free service sleeps after ~15 minutes without visits and agents pause while asleep. Point a free pinger (UptimeRobot or cron-job.org) at `APP_BASE_URL/api/health` every 5 minutes. For a truly always-on free option use an Oracle Cloud "Always Free" VM with `docker compose up`.
+6. **Email:** the free Resend tier works but needs a domain you own (SPF/DKIM). Without one the app stays in dry-run mode and sends nothing.
+
+Set `RUN_WORKER_INLINE=off` if you run the worker as a separate process.
+
 Do these in order. The app checks most of them for you: **Settings → Connection test** (or `npm run live:check`) reports PASS / WARN / FAIL with a fix for each.
 
 ## 1. Run three things
