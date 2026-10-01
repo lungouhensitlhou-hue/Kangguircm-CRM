@@ -2,6 +2,7 @@ import { query, queryOne } from "../db";
 import { getContacts, getLead } from "../leads";
 import { enqueueRun } from "../queue";
 import { getSettings } from "../settings";
+import { createTask } from "../tasks";
 import { candidates, inferPattern, parseName, type Pattern } from "../providers/email-patterns";
 import { findDomain } from "./domain-finder";
 import { pickContact } from "./outreach";
@@ -47,6 +48,7 @@ export const contactsHandler: Handler = async (ctx) => {
       await enqueueRun({ kind: "outreach", leadId: lead.id, parentId: ctx.run.id, input: { step: 1 }, idempotencyKey: `outreach:${lead.id}:1`, createdBy: "agent" });
       await ctx.log("Queued outreach drafting");
     }
+    if (!usable) await createTask({ leadId: lead.id, title: `Find a contact email for ${org.name}`, kind: "research", source: "contacts", dedupeKey: `nocontact:${lead.id}`, notes: "The contact finder could not produce a usable address. Add a contact manually or confirm the website." });
     return { ...summary, ...out, usableContact: !!usable };
   };
   if (!website) return finish({ skipped: "no_website" });

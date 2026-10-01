@@ -3,6 +3,7 @@ import { query, queryOne } from "../db";
 import { addContact, getLead, setStage } from "../leads";
 import { assembleBody, isSuppressed, isValidEmail, newUnsubToken, normalizeEmail } from "../compliance";
 import { getSettings } from "../settings";
+import { createTask } from "../tasks";
 import { validateDraft, firstName } from "./outreach";
 import type { Message } from "../types";
 import { PermanentError, type Handler } from "./runtime";
@@ -105,6 +106,12 @@ export const replyHandler: Handler = async (ctx) => {
   if (a.label === "not_interested") await setStage(lead.id, "lost", "agent");
   if (a.label === "not_now") await query("UPDATE leads SET next_action_at = now() + interval '90 days', updated_at = now() WHERE id = $1", [lead.id]);
   if (a.label === "interested" || a.label === "question") await query("UPDATE leads SET next_action_at = now(), updated_at = now() WHERE id = $1", [lead.id]);
+
+  // To-dos so nothing a human should answer falls through the cracks
+  const who = (await queryOne<{ full_name: string | null }>("SELECT full_name FROM contacts WHERE lower(email) = $1 LIMIT 1", [normalizeEmail(sender)]))?.full_name ?? sender;
+  if (a.label === "interested") await createTask({ leadId: lead.id, title: `Reply to ${who} (${lead.org.name}): wants to talk`, kind: "email", source: "reply", dedupeKey: `reply:${inbound.id}` });
+  if (a.label === "question") await createTask({ leadId: lead.id, title: `Answer ${who}'s question (${lead.org.name})`, kind: "email", source: "reply", dedupeKey: `reply:${inbound.id}` });
+  if (a.label === "not_now") await createTask({ leadId: lead.id, title: `Check back with ${lead.org.name}`, kind: "email", dueAt: new Date(Date.now() + 90 * 86400_000), source: "reply", dedupeKey: `reply:${inbound.id}` });
 
   let referralContact: string | null = null;
   if (a.referral?.email && !(await isSuppressed(a.referral.email))) {

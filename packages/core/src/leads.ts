@@ -164,6 +164,26 @@ export async function setStage(leadId: string, stage: Stage, actor = "system"): 
   if (row.stage === stage) return;
   await query("UPDATE leads SET stage = $2, updated_at = now() WHERE id = $1", [leadId, stage]);
   await audit(actor, "stage_change", "lead", leadId, { from: row.stage, to: stage });
+  await syncDealAndTasks(leadId, stage);
+}
+
+/** Keep deals and tasks consistent with the pipeline: Meeting opens a deal, Won/Lost close it, dead leads drop their to-dos. */
+async function syncDealAndTasks(leadId: string, stage: Stage): Promise<void> {
+  if (stage === "meeting") {
+    await query(
+      `INSERT INTO deals (lead_id, name, source) SELECT l.id, o.name || ' - RCM services', 'auto' FROM leads l JOIN organizations o ON o.id = l.organization_id WHERE l.id = $1
+       ON CONFLICT (lead_id) WHERE status = 'open' DO NOTHING`,
+      [leadId],
+    );
+  } else if (stage === "won") {
+    const closed = await queryOne("UPDATE deals SET status = 'won', closed_at = now() WHERE lead_id = $1 AND status = 'open' RETURNING id", [leadId]);
+    if (!closed && !(await queryOne("SELECT 1 FROM deals WHERE lead_id = $1 AND status = 'won'", [leadId]))) {
+      await query("INSERT INTO deals (lead_id, name, status, closed_at, source) SELECT l.id, o.name || ' - RCM services', 'won', now(), 'auto' FROM leads l JOIN organizations o ON o.id = l.organization_id WHERE l.id = $1", [leadId]);
+    }
+  } else if (stage === "lost" || stage === "disqualified") {
+    await query("UPDATE deals SET status = 'lost', closed_at = now() WHERE lead_id = $1 AND status = 'open'", [leadId]);
+    await query("UPDATE tasks SET status = 'dismissed', completed_at = now() WHERE lead_id = $1 AND status = 'open'", [leadId]);
+  }
 }
 
 export async function updateLead(leadId: string, patch: { notes?: string; stage?: Stage; next_action_at?: string | null }, actor = "user"): Promise<void> {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { STAGES, STAGE_LABELS } from "@rcm/core/types";
-import { validateConfig, workerStatus, integrationStatus, listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
+import { dealStats, listTasks, validateConfig, workerStatus, integrationStatus, listRuns, pipelineStats, query, getSettings, senderReady } from "@rcm/core";
 import { StatusBadge } from "@/components/Badge";
 import { ago } from "@/lib/format";
 
@@ -16,7 +16,7 @@ export default async function Dashboard() {
   ]);
   const ready = senderReady(settings);
   const integ = integrationStatus();
-  const [worker] = await Promise.all([workerStatus()]);
+  const [worker, dueTasks, deals] = await Promise.all([workerStatus(), listTasks({ bucket: "all", limit: 6 }), dealStats()]);
   const blocking = validateConfig().filter((i) => i.level === "error");
   const max = Math.max(1, ...Object.values(stats.byStage));
   return (
@@ -52,6 +52,19 @@ export default async function Dashboard() {
               <li key={r.id}><Link href={`/runs/${r.id}`}>{r.kind}</Link> <StatusBadge status={r.status} /> <span className="muted small"> {ago(r.created_at)}</span></li>
             ))}
           </ul>
+        </div>
+      </div>
+      <div className="grid g2" style={{ marginTop: 14 }}>
+        <div className="card">
+          <h2>Next tasks</h2>
+          {dueTasks.length === 0 ? <div className="muted">No open tasks. <Link href="/tasks">Add one</Link>.</div> : <ul className="plain">{dueTasks.map((t) => <li key={t.id}>{t.title}{t.org_name && t.lead_id ? <> · <Link href={`/leads/${t.lead_id}`}>{t.org_name}</Link></> : null}<div className="small muted">due {new Date(t.due_at).toLocaleDateString()}</div></li>)}</ul>}
+          <div className="small" style={{ marginTop: 8 }}><Link href="/tasks">All tasks →</Link></div>
+        </div>
+        <div className="card">
+          <h2>Deals</h2>
+          <div className="small muted">Open pipeline</div><div style={{ fontSize: 22, fontWeight: 700 }}>{deals.open.value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</div>
+          <div className="small muted">{deals.open.count} open · {deals.won.count} won ({deals.won.value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}){deals.winRate !== null ? ` · ${deals.winRate}% win rate` : ""}</div>
+          <div className="small" style={{ marginTop: 8 }}><Link href="/deals">All deals →</Link></div>
         </div>
       </div>
       <div className="card" style={{ marginTop: 14 }}>

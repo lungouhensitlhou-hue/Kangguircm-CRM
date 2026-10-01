@@ -31,3 +31,5 @@ export * from "./providers/hints";
 export * from "./providers/email-patterns";
 export * from "./providers/smtp-verify";
 export * from "./agents/domain-finder";
+export * from "./tasks";
+export * from "./deals";

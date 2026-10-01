@@ -3,10 +3,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 const ITEMS = [
-  ["/", "Dashboard"], ["/leads", "Leads"], ["/pipeline", "Pipeline"], ["/approvals", "Approvals"], ["/runs", "Agent runs"], ["/chat", "Ask agents"], ["/settings", "Settings"],
+  ["/", "Dashboard"], ["/leads", "Leads"], ["/pipeline", "Pipeline"], ["/deals", "Deals"], ["/tasks", "Tasks"], ["/approvals", "Approvals"], ["/runs", "Agent runs"], ["/chat", "Ask agents"], ["/settings", "Settings"],
 ] as const;
 
-export function Nav({ pending, email }: { pending: number; email: string }) {
+export function Nav({ pending, tasksDue, email }: { pending: number; tasksDue: number; email: string }) {
   const path = usePathname();
   const router = useRouter();
   return (
@@ -17,6 +17,7 @@ export function Nav({ pending, email }: { pending: number; email: string }) {
           <Link key={href} href={href} className={href === "/" ? (path === "/" ? "active" : "") : path.startsWith(href) ? "active" : ""}>
             {label}
             {href === "/approvals" && pending > 0 ? <span className="badge warn">{pending}</span> : null}
+            {href === "/tasks" && tasksDue > 0 ? <span className="badge warn" data-testid="tasks-due">{tasksDue}</span> : null}
           </Link>
         ))}
       </nav>

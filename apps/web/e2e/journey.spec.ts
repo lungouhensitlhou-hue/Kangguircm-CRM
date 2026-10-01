@@ -284,3 +284,39 @@ test("contact finder: guessed address is labelled, never used for outreach, and 
   await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
   await expect(page.getByTestId("run-log")).toContainText("Drafted step 1 email to sam.owner@e2e-ortho.test");
 });
+
+test("tasks and deals: replies create to-dos, Meeting opens a deal, won closes it and moves the lead", async ({ page }) => {
+  await login(page);
+  // the interested reply in the outreach test created a task automatically
+  await page.goto("/tasks");
+  const reply = page.getByTestId("tasks").locator("li", { hasText: "Reply to Jane Smith" });
+  await expect(reply).toContainText("Riverside Orthopedics");
+  await expect(page.getByTestId("tasks-due")).toBeVisible();
+  await reply.getByRole("button", { name: "Done" }).click();
+  await expect(reply).toHaveCount(0);
+  await page.getByRole("link", { name: "Done", exact: true }).click();
+  await expect(page.getByTestId("tasks").locator("li", { hasText: "Reply to Jane Smith" })).toBeVisible();
+  // manual task
+  await page.goto("/tasks");
+  await page.getByLabel("New task").fill("Call the Heart Clinic");
+  await page.getByRole("button", { name: "Add task" }).click();
+  await expect(page.getByTestId("tasks").locator("li", { hasText: "Call the Heart Clinic" })).toBeVisible();
+  await page.getByTestId("tasks").locator("li", { hasText: "Call the Heart Clinic" }).getByRole("button", { name: "+7d" }).click();
+  await expect(page.getByTestId("tasks").locator("li", { hasText: "Call the Heart Clinic" })).toContainText(/in [67]d/);
+
+  // the pipeline test moved the Heart Clinic to Meeting, which opened a deal automatically
+  await page.goto("/deals");
+  const deal = page.getByTestId("deal").filter({ hasText: "E2e Heart Clinic" });
+  await expect(deal).toContainText("opened automatically");
+  await deal.getByLabel("Value (USD)").fill("12000");
+  await deal.getByLabel("Expected close").fill("2027-01-15");
+  await deal.getByRole("button", { name: "Save" }).click();
+  await expect(deal.getByText("Saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("open-value")).toHaveText("$12,000");
+  await page.getByTestId("deal").filter({ hasText: "E2e Heart Clinic" }).getByRole("button", { name: "Mark won" }).click();
+  await expect(page.getByTestId("open-value")).toHaveText("$0");
+  await page.getByRole("link", { name: "E2e Heart Clinic" }).first().click();
+  await expect(page.locator(".head .badge", { hasText: "Won" })).toBeVisible();
+  await expect(page.getByText("E2e Heart Clinic - RCM services · won")).toBeVisible();
+});

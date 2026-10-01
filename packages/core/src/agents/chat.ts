@@ -3,6 +3,8 @@ import { query, queryOne } from "../db";
 import { getContacts, getLead, listLeads, pipelineStats, setStage, updateLead } from "../leads";
 import { enqueueRun } from "../queue";
 import { STAGES, STAGE_LABELS, type Stage } from "../types";
+import { createTask, listTasks, taskCounts } from "../tasks";
+import { dealStats } from "../deals";
 import type { ToolSpec } from "../providers/llm";
 import { getSettings } from "../settings";
 import { RunContext, type Handler } from "./runtime";
@@ -28,6 +30,8 @@ export const CHAT_TOOLS: ToolSpec[] = [
   { name: "move_stage", description: "Move a lead to a pipeline stage.", input_schema: obj({ lead_id: { type: "string" }, stage: { type: "string", enum: [...STAGES] } }, ["lead_id", "stage"]) },
   { name: "add_note", description: "Append a note to a lead.", input_schema: obj({ lead_id: { type: "string" }, note: { type: "string" } }, ["lead_id", "note"]) },
   { name: "list_recent_replies", description: "Recent inbound replies with AI classification (interested, question, referral, not_now, not_interested, out_of_office) and summary.", input_schema: obj({ limit: { type: "number" } }) },
+  { name: "list_tasks", description: "Open tasks (overdue, today, upcoming) with the lead they belong to.", input_schema: obj({ bucket: { type: "string", enum: ["overdue", "today", "upcoming", "all"] } }) },
+  { name: "add_task", description: "Create a follow-up task, optionally on a lead.", input_schema: obj({ title: { type: "string" }, lead_id: { type: "string" }, due_in_days: { type: "number" }, kind: { type: "string", enum: ["call", "email", "review", "research", "other"] } }, ["title"]) },
   { name: "list_pending_approvals", description: "Outreach drafts awaiting human approval.", input_schema: obj({}) },
 ];
 
@@ -98,6 +102,18 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
       out = await query("SELECT l.id AS lead_id, o.name AS practice, m.to_email AS from_email, m.classification, m.meta->>'summary' AS summary, m.created_at FROM messages m JOIN leads l ON l.id = m.lead_id JOIN organizations o ON o.id = l.organization_id WHERE m.direction = 'inbound' ORDER BY m.created_at DESC LIMIT $1", [Math.min(Number(i.limit ?? 10), 25)]);
       break;
     }
+    case "list_tasks": {
+      const rows = await listTasks({ bucket: i.bucket ?? "all", limit: 25 });
+      out = { counts: await taskCounts(), tasks: rows.map((t) => ({ id: t.id, title: t.title, due: t.due_at, practice: t.org_name, lead_id: t.lead_id })) };
+      break;
+    }
+    case "add_task": {
+      if (i.lead_id) await need(i.lead_id);
+      const days = Number.isFinite(Number(i.due_in_days)) ? Number(i.due_in_days) : 0;
+      const t = await createTask({ leadId: i.lead_id ?? null, title: String(i.title ?? ""), kind: i.kind, dueAt: new Date(Date.now() + days * 86400_000), source: "chat", createdBy: "chat" });
+      out = { ok: true, task_id: t?.id };
+      break;
+    }
     case "list_pending_approvals": {
       out = await query("SELECT m.id, o.name AS practice, m.to_email, m.subject, m.step FROM messages m JOIN leads l ON l.id = m.lead_id JOIN organizations o ON o.id = l.organization_id WHERE m.status = 'draft' ORDER BY m.created_at DESC LIMIT 25");
       break;
@@ -112,10 +128,14 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
 export async function ruleBasedChat(ctx: RunContext, text: string): Promise<string> {
   const t = text.trim().toLowerCase();
   const call = (n: string, i: any) => runCrmTool(ctx, n, i).then((s) => JSON.parse(s));
-  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>` / `contacts <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\n- `replies` – recent replies and how they were classified\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
+  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>` / `contacts <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\n- `replies` – recent replies and how they were classified\n- `tasks` – your open to-dos\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
   if (/^(stats|pipeline|status)/.test(t)) {
     const s = await call("pipeline_stats", {});
     return `${s.total} leads. ` + Object.entries(s.byStage).filter(([, n]) => n).map(([k, n]) => `${STAGE_LABELS[k as Stage]}: ${n}`).join(", ") + `. Sent ${s.messages.sent}, replies ${s.messages.replies} (${s.replyRate}%), ${s.messages.drafts} draft(s) awaiting approval.`;
+  }
+  if (/^(tasks?|to-?dos?)\b/.test(t)) {
+    const r = await call("list_tasks", {});
+    return r.tasks.length ? `${r.counts.overdue} overdue, ${r.counts.today} due today, ${r.counts.upcoming} upcoming:\n` + r.tasks.map((x: any) => `- ${x.title}${x.practice && !x.title.includes(x.practice) ? ` (${x.practice})` : ""}`).join("\n") : "No open tasks.";
   }
   if (/^(replies|inbox)/.test(t)) {
     const rows = await call("list_recent_replies", {});

@@ -32,7 +32,7 @@ async function step(out: Check[], name: string, fn: () => Promise<Omit<Check, "n
  * Health + connection test. `deep` calls the live services (a few cents of AI tokens at most, never sends an email).
  * Everything is reported as pass / warn / fail with a plain-English hint, so problems surface before real use.
  */
-export async function runDiagnostics(deps: Deps, opts: { deep?: boolean; env?: Record<string, string | undefined> } = {}): Promise<Check[]> {
+export async function runDiagnostics(deps: Deps, opts: { deep?: boolean; env?: Record<string, string | undefined>; port25?: () => Promise<{ ok: boolean; detail: string }> } = {}): Promise<Check[]> {
   const env = opts.env ?? process.env;
   const out: Check[] = [];
 
@@ -102,7 +102,7 @@ export async function runDiagnostics(deps: Deps, opts: { deep?: boolean; env?: R
 
   if (!status.verify) out.push({ name: "Mailbox verification", status: "skip", detail: "off (SMTP_VERIFY not set): guessed addresses stay unverified and are not emailed" });
   else await step(out, "Mailbox verification (outbound port 25)", async () => {
-    const r = await port25Reachable();
+    const r = await (opts.port25 ?? port25Reachable)();
     if (!r.ok) throw new Error(`${r.detail}\n→ Most cloud hosts (AWS, GCP, Azure) block outbound port 25. Run on a host that allows it, or set SMTP_VERIFY off.`);
     return { status: "pass", detail: r.detail };
   });

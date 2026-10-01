@@ -66,8 +66,12 @@ describe("mailbox verification config + diagnostics", () => {
     const web = { fetchPage: async () => ({ url: "u", status: 200, title: "t", text: "x", links: [], emails: [] }), search: async () => [] } as any;
     const off = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: GOOD_PROD });
     expect(off.find((c) => c.name === "Mailbox verification")).toMatchObject({ status: "skip" });
-    const on = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: { ...GOOD_PROD, SMTP_VERIFY: "on" } });
-    expect(on.some((c) => c.name.startsWith("Mailbox verification (outbound port 25)"))).toBe(true);
+    const on = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: { ...GOOD_PROD, SMTP_VERIFY: "on" }, port25: async () => ({ ok: false, detail: "timed out (outbound port 25 is probably blocked by your host)" }) });
+    const row = on.find((c) => c.name.startsWith("Mailbox verification (outbound port 25)"))!;
+    expect(row.status).toBe("fail");
+    expect(row.hint).toMatch(/block outbound port 25/);
+    const open = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: { ...GOOD_PROD, SMTP_VERIFY: "on" }, port25: async () => ({ ok: true, detail: "port 25 is open" }) });
+    expect(open.find((c) => c.name.startsWith("Mailbox verification (outbound port 25)"))!.status).toBe("pass");
   });
 });
 

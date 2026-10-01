@@ -8,6 +8,8 @@ export type Queryable = Pick<pg.Pool, "query">;
 // int8 (20) and numeric (1700) arrive as strings by default; counts and costs here are small.
 pg.types.setTypeParser(20, (v) => Number(v));
 pg.types.setTypeParser(1700, (v) => Number(v));
+// DATE columns (1082) as plain 'YYYY-MM-DD' strings: JS Date objects break JSON/React serialization and shift with timezones.
+pg.types.setTypeParser(1082, (v) => v);
 
 const g = globalThis as unknown as { __rcmPool?: pg.Pool };
 

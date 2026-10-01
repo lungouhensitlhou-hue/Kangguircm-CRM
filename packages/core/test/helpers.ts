@@ -13,7 +13,7 @@ export async function setupDb() {
 }
 export async function resetDb() {
   await query(
-    "TRUNCATE organizations, contacts, leads, research_profiles, messages, suppressions, agent_runs, agent_events, chat_messages, settings, audit_log, email_events, email_patterns RESTART IDENTITY CASCADE",
+    "TRUNCATE organizations, contacts, leads, research_profiles, messages, suppressions, agent_runs, agent_events, chat_messages, settings, audit_log, email_events, email_patterns, tasks, deals RESTART IDENTITY CASCADE",
   );
 }
 export async function teardownDb() {

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STAGE_LABELS } from "@rcm/core/types";
-import { getContacts, getLead, query, queryOne, isSuppressed } from "@rcm/core";
+import { getContacts, getLead, listDeals, listTasks, query, queryOne, isSuppressed } from "@rcm/core";
+import { AddTask, TaskList } from "@/components/TaskList";
+import { CreateDeal, DealEditor } from "@/components/DealEditor";
 import { AddContact, LeadActions } from "@/components/LeadActions";
 import { Badge, StatusBadge } from "@/components/Badge";
 import { ago, scoreClass } from "@/lib/format";
@@ -12,6 +14,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const lead = await getLead(id);
   if (!lead) notFound();
+  const [leadTasks, leadDeals] = await Promise.all([listTasks({ leadId: lead.id, bucket: "all" }), listDeals({ leadId: lead.id })]);
   const [contacts, profile, messages, runs] = await Promise.all([
     getContacts(lead.organization_id),
     queryOne<any>("SELECT * FROM research_profiles WHERE lead_id = $1 ORDER BY created_at DESC LIMIT 1", [lead.id]),
@@ -65,6 +68,15 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               ))}</tbody></table>
             )}
             <div style={{ marginTop: 12 }}><AddContact leadId={lead.id} /></div>
+          </div>
+          <div className="card">
+            <h2>Tasks</h2>
+            <TaskList tasks={leadTasks as any} empty="No open tasks for this lead." />
+            <div style={{ marginTop: 10 }}><AddTask leadId={lead.id} /></div>
+          </div>
+          <div className="card">
+            <h2>Deal</h2>
+            {leadDeals.length === 0 ? <CreateDeal leadId={lead.id} /> : leadDeals.map((d) => <div key={d.id} style={{ marginBottom: 8 }}><div className="small muted">{d.name} · {d.status}</div><DealEditor deal={{ id: d.id, lead_id: d.lead_id, name: d.name, value_usd: d.value_usd, status: d.status, expected_close: d.expected_close, notes: d.notes }} /></div>)}
           </div>
           <LeadActions leadId={lead.id} stage={lead.stage} notes={lead.notes} />
         </div>
