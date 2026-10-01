@@ -386,6 +386,9 @@ describe("chat agent", () => {
     expect(await ask("research riverside")).toMatch(/Queued research for Riverside/);
     expect(await query("SELECT 1 FROM agent_runs WHERE kind='research'")).toHaveLength(1);
     expect(await ask("discover orthopedic in TX,FL limit 20")).toMatch(/Started discovery/);
+    expect(await ask("contacts riverside")).toMatch(/Started the contact finder for Riverside Orthopedics/);
+    expect(await query("SELECT 1 FROM agent_runs WHERE kind='contacts' AND created_by='chat'")).toHaveLength(1);
+    expect(await ask("find contacts for nobody-here")).toMatch(/couldn't find/);
     expect(await ask("approvals")).toMatch(/No drafts/);
     expect(await ask("help")).toMatch(/No AI key/);
     expect(await ask("dance")).toMatch(/didn't understand/);

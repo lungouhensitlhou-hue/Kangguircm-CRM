@@ -53,6 +53,24 @@ describe("config validation", () => {
   });
 });
 
+describe("mailbox verification config + diagnostics", () => {
+  it("warns when it would introduce itself as localhost; explains the port-25 limitation", () => {
+    const issues = validateConfig({ ...GOOD_PROD, SMTP_VERIFY: "on", APP_BASE_URL: "http://localhost:3000" });
+    expect(issues.find((i) => i.key === "SMTP_VERIFY_HELO")!.level).toBe("warn");
+    expect(issues.find((i) => i.key === "SMTP_VERIFY")!.message).toMatch(/port 25/);
+    expect(validateConfig({ ...GOOD_PROD, SMTP_VERIFY: "on", SMTP_VERIFY_HELO: "me.com" }).some((i) => i.key === "SMTP_VERIFY_HELO")).toBe(false);
+    expect(validateConfig(GOOD_PROD).some((i) => i.key === "SMTP_VERIFY")).toBe(false);
+  });
+  it("connection test reports verification as off, or checks port 25 when on", async () => {
+    await enqueueRun({ kind: "sweep", idempotencyKey: "hb" });
+    const web = { fetchPage: async () => ({ url: "u", status: 200, title: "t", text: "x", links: [], emails: [] }), search: async () => [] } as any;
+    const off = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: GOOD_PROD });
+    expect(off.find((c) => c.name === "Mailbox verification")).toMatchObject({ status: "skip" });
+    const on = await runDiagnostics(makeDeps({ web, npi: { search: async () => [{ name: "n" }] } as any }), { deep: true, env: { ...GOOD_PROD, SMTP_VERIFY: "on" } });
+    expect(on.some((c) => c.name.startsWith("Mailbox verification (outbound port 25)"))).toBe(true);
+  });
+});
+
 describe("vendor errors explain themselves", () => {
   it("hints for the common failures", () => {
     expect(hintFor("openai", 401, "Incorrect API key provided")).toMatch(/key was rejected/);

@@ -90,6 +90,7 @@ export function BulkBar({ ids }: { ids: string[] }) {
     <div className="row" style={{ marginBottom: 10, alignItems: "center" }}>
       <span className="muted fit">Bulk on the {ids.length} leads shown:</span>
       <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "research" }), "Research queued for all shown leads.")}>Research all</button>
+      <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "find_contacts" }), "Contact finder queued for all shown leads.")}>Find contacts for all</button>
       <button className="fit sm" disabled={a.busy || !ids.length} onClick={() => a.run(() => api("/api/leads/bulk", "POST", { ids, action: "draft_outreach" }), "Drafting queued (drafts land in Approvals).")}>Draft outreach for all</button>
       {a.ok && <span className="badge ok fit">{a.ok}</span>}{a.error && <span className="badge bad fit">{a.error}</span>}
     </div>

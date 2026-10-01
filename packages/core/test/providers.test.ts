@@ -285,7 +285,7 @@ describe("email providers", () => {
     expect(() => mailerFromEnv({ EMAIL_PROVIDER: "carrier-pigeon" })).toThrow(/Unknown EMAIL_PROVIDER/);
   });
   it("integrationStatus summarizes the environment", () => {
-    expect(integrationStatus({})).toEqual({ llm: null, email: "dry-run", search: null, inbound: false, deliversEmail: false });
-    expect(integrationStatus({ GROQ_API_KEY: "k", RESEND_API_KEY: "k", TAVILY_API_KEY: "k", INBOUND_WEBHOOK_SECRET: "s" })).toEqual({ llm: "groq", email: "resend", search: "tavily", inbound: true, deliversEmail: true });
+    expect(integrationStatus({})).toEqual({ llm: null, email: "dry-run", search: null, inbound: false, verify: false, deliversEmail: false });
+    expect(integrationStatus({ GROQ_API_KEY: "k", RESEND_API_KEY: "k", TAVILY_API_KEY: "k", INBOUND_WEBHOOK_SECRET: "s" })).toEqual({ llm: "groq", email: "resend", search: "tavily", inbound: true, verify: false, deliversEmail: true });
   });
 });

@@ -49,9 +49,18 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             {contacts.length === 0 ? <div className="muted" style={{ marginBottom: 10 }}>No contacts yet. Run research or add one.</div> : (
               <table><tbody>{contacts.map((c) => (
                 <tr key={c.id}>
-                  <td>{c.full_name ?? <span className="muted">(shared inbox)</span>}{c.title && <div className="small muted">{c.title}</div>}</td>
-                  <td>{c.email ?? "–"}{c.email && suppressed.has(c.email) && <> <Badge kind="bad">do not contact</Badge></>}</td>
-                  <td>{c.is_decision_maker && <Badge kind="ok">decision maker</Badge>}</td>
+                  <td>{c.full_name ?? <span className="muted">(shared inbox)</span>}{c.title && <div className="small muted">{c.title}</div>}{c.phone && <div className="small muted">{c.phone}</div>}</td>
+                  <td>
+                    {c.email ?? <span className="muted">no email yet</span>}
+                    {c.email && suppressed.has(c.email) && <> <Badge kind="bad">do not contact</Badge></>}
+                    {c.email && (
+                      <div style={{ marginTop: 2 }}>
+                        <Badge kind={c.email_status === "verified" ? "ok" : c.email_status === "invalid" || c.email_status === "bounced" ? "bad" : c.email_status === "risky" ? "warn" : ""}>{c.email_status}</Badge>{" "}
+                        <Badge kind={c.email_source === "pattern" ? "warn" : "info"}>{c.email_source === "pattern" ? `guessed · ${c.email_confidence}%` : "published"}</Badge>
+                      </div>
+                    )}
+                  </td>
+                  <td>{c.is_decision_maker && <Badge kind="ok">decision maker</Badge>}<div className="small muted">{c.source}</div></td>
                 </tr>
               ))}</tbody></table>
             )}

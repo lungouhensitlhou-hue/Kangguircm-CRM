@@ -23,6 +23,7 @@ export const CHAT_TOOLS: ToolSpec[] = [
   { name: "pipeline_stats", description: "Counts by stage plus outreach totals and reply rate.", input_schema: obj({}) },
   { name: "start_discovery", description: "Queue a lead-discovery run against the NPPES registry. A specialty or city is required (the registry rejects state-only searches).", input_schema: obj({ states: { type: "array", items: { type: "string" } }, specialty: { type: "string" }, city: { type: "string" }, limit: { type: "number" }, auto_research: { type: "boolean" } }, ["states"]) },
   { name: "research_lead", description: "Queue a research run for a lead (finds website, EHR, size, decision-makers).", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
+  { name: "find_contacts", description: "Queue the contact finder for a lead: finds the website, registry official and likely decision-maker emails (verified when possible).", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "draft_outreach", description: "Queue the outreach agent to draft an email for a lead. Lands in Approvals; never sends.", input_schema: obj({ lead_id: { type: "string" } }, ["lead_id"]) },
   { name: "move_stage", description: "Move a lead to a pipeline stage.", input_schema: obj({ lead_id: { type: "string" }, stage: { type: "string", enum: [...STAGES] } }, ["lead_id", "stage"]) },
   { name: "add_note", description: "Append a note to a lead.", input_schema: obj({ lead_id: { type: "string" }, note: { type: "string" } }, ["lead_id", "note"]) },
@@ -67,6 +68,12 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
       out = { started: true, run_id: run.id };
       break;
     }
+    case "find_contacts": {
+      const lead = await need(i.lead_id);
+      const run = await enqueueRun({ kind: "contacts", leadId: lead.id, parentId: ctx.run.id, createdBy: "chat", idempotencyKey: key(lead.id), input: {} });
+      out = { started: true, run_id: run.id };
+      break;
+    }
     case "draft_outreach": {
       const lead = await need(i.lead_id);
       const run = await enqueueRun({ kind: "outreach", leadId: lead.id, parentId: ctx.run.id, createdBy: "chat", idempotencyKey: key(lead.id), input: { step: 1 } });
@@ -105,7 +112,7 @@ export async function runCrmTool(ctx: RunContext, name: string, i: any): Promise
 export async function ruleBasedChat(ctx: RunContext, text: string): Promise<string> {
   const t = text.trim().toLowerCase();
   const call = (n: string, i: any) => runCrmTool(ctx, n, i).then((s) => JSON.parse(s));
-  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\n- `replies` – recent replies and how they were classified\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
+  if (/^(help|\?)/.test(t)) return "No AI key is configured, so I understand simple commands:\n- `stats` – pipeline summary\n- `find <text> [in TX]` – search leads\n- `research <lead name>` / `draft <lead name>` / `contacts <lead name>`\n- `discover <specialty> in TX,FL [limit 50]`\n- `approvals` – pending drafts\n- `replies` – recent replies and how they were classified\nSet ANTHROPIC_API_KEY on the worker to enable natural-language control.";
   if (/^(stats|pipeline|status)/.test(t)) {
     const s = await call("pipeline_stats", {});
     return `${s.total} leads. ` + Object.entries(s.byStage).filter(([, n]) => n).map(([k, n]) => `${STAGE_LABELS[k as Stage]}: ${n}`).join(", ") + `. Sent ${s.messages.sent}, replies ${s.messages.replies} (${s.replyRate}%), ${s.messages.drafts} draft(s) awaiting approval.`;
@@ -123,6 +130,14 @@ export async function ruleBasedChat(ctx: RunContext, text: string): Promise<stri
     const states = disc[2].split(/[ ,]+/).filter((s) => s.length === 2);
     const r = await call("start_discovery", { states, specialty: disc[1], limit: Number(disc[3] ?? 50), auto_research: true });
     return `Started discovery for "${disc[1]}" in ${states.join(", ").toUpperCase()}. Run ${r.run_id} — follow it on the Runs page.`;
+  }
+  const fc = t.match(/^(?:find )?contacts?\s+(?:for\s+)?(.+)$/);
+  if (fc) {
+    const found = await call("search_leads", { q: fc[1], limit: 2 });
+    if (!found.leads.length) return `I couldn't find a lead matching "${fc[1]}".`;
+    if (found.total > 1) return `Several leads match "${fc[1]}": ${found.leads.map((l: any) => l.name).join("; ")}. Be more specific.`;
+    const r = await call("find_contacts", { lead_id: found.leads[0].id });
+    return `Started the contact finder for ${found.leads[0].name} (run ${r.run_id}).`;
   }
   const act = t.match(/^(research|draft)\s+(.+)$/);
   if (act) {

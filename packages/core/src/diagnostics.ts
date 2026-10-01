@@ -6,6 +6,7 @@ import { costUsd } from "./providers/llm";
 import { integrationStatus } from "./providers/integrations";
 import type { Deps } from "./agents/runtime";
 import { baseUrl } from "./compliance";
+import { port25Reachable } from "./providers/smtp-verify";
 
 export interface Check { name: string; status: "pass" | "fail" | "warn" | "skip"; detail: string; hint?: string }
 
@@ -97,6 +98,13 @@ export async function runDiagnostics(deps: Deps, opts: { deep?: boolean; env?: R
     const [good, bad] = [await deps.mxCheck!("gmail.com"), await deps.mxCheck!("no-such-domain-xyz123.invalid")];
     if (!good) throw new Error("DNS lookups are failing: even gmail.com looks unreachable\n→ Check the server's DNS/outbound access, or set SKIP_MX_CHECK=1.");
     return { status: bad ? "warn" : "pass", detail: "DNS works" };
+  });
+
+  if (!status.verify) out.push({ name: "Mailbox verification", status: "skip", detail: "off (SMTP_VERIFY not set): guessed addresses stay unverified and are not emailed" });
+  else await step(out, "Mailbox verification (outbound port 25)", async () => {
+    const r = await port25Reachable();
+    if (!r.ok) throw new Error(`${r.detail}\n→ Most cloud hosts (AWS, GCP, Azure) block outbound port 25. Run on a host that allows it, or set SMTP_VERIFY off.`);
+    return { status: "pass", detail: r.detail };
   });
 
   await step(out, `Email provider (${deps.mailer.name})`, async () => {

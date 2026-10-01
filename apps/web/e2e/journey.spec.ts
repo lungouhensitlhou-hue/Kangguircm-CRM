@@ -238,3 +238,49 @@ test("resilience: config warnings, connection test, no worker banner, friendly 4
   await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to the dashboard" })).toBeVisible();
 });
+
+test("contact finder: guessed address is labelled, never used for outreach, and can be enabled by the operator", async ({ page }) => {
+  await login(page);
+  await page.goto("/leads");
+  await page.locator("#a-name").fill("Guess Clinic");
+  await page.locator("#a-city").fill("Austin");
+  await page.locator("#a-state").fill("TX");
+  await page.locator("#a-web").fill("https://e2e-ortho.test");
+  await page.locator("#a-cn").fill("Sam Owner");
+  await page.locator("#a-ct").fill("Owner");
+  await page.getByRole("button", { name: "Add lead" }).click();
+  await expect(page.getByText("Lead added.")).toBeVisible();
+  await page.getByLabel("Search", { exact: true }).fill("Guess Clinic");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await page.getByRole("link", { name: "Guess Clinic" }).click();
+  await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/);
+  await expect(page.getByText("no email yet")).toBeVisible();
+
+  await page.getByRole("button", { name: "Find contacts" }).click();
+  await expect(page).toHaveURL(/\/runs\//);
+  await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
+  await expect(page.getByTestId("run-log")).toContainText("best guess sam.owner@e2e-ortho.test");
+  await page.goBack();
+  await page.reload();
+  await expect(page.getByText("sam.owner@e2e-ortho.test")).toBeVisible();
+  await expect(page.locator(".badge", { hasText: "unverified" })).toBeVisible();
+  await expect(page.locator(".badge", { hasText: "guessed · 25%" })).toBeVisible();
+
+  // guessed + unverified: the outreach agent must refuse to use it
+  await page.getByRole("button", { name: "Draft email now" }).click();
+  await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
+  await expect(page.getByTestId("run-log")).toContainText("No reachable, non-suppressed contact email");
+
+  // the operator can opt in to unverified guesses
+  await page.goto("/settings");
+  await page.getByLabel(/Also email guessed addresses/).check();
+  await page.getByRole("button", { name: "Save settings" }).click();
+  await expect(page.getByRole("status")).toContainText("Settings saved");
+  await page.goto("/leads");
+  await page.getByLabel("Search", { exact: true }).fill("Guess Clinic");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await page.getByRole("link", { name: "Guess Clinic" }).click();
+  await page.getByRole("button", { name: "Draft email now" }).click();
+  await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
+  await expect(page.getByTestId("run-log")).toContainText("Drafted step 1 email to sam.owner@e2e-ortho.test");
+});

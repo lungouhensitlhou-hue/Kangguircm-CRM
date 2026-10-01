@@ -20,6 +20,7 @@ export function LeadActions({ leadId, stage, notes }: { leadId: string; stage: S
       <div className="row" style={{ marginBottom: 12 }}>
         <button className="fit primary" disabled={a.busy} onClick={() => go("research")}>Research this lead</button>
         <button className="fit" disabled={a.busy} onClick={() => go("research_and_draft")}>Research + draft email</button>
+        <button className="fit" disabled={a.busy} onClick={() => go("find_contacts")}>Find contacts</button>
         <button className="fit" disabled={a.busy} onClick={() => go("draft_outreach")}>Draft email now</button>
       </div>
       <div className="field">

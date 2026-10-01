@@ -51,6 +51,12 @@ export function validateConfig(env: Env = process.env): ConfigIssue[] {
   }
   if (!has("INBOUND_WEBHOOK_SECRET")) add("warn", "INBOUND_WEBHOOK_SECRET", "Replies cannot be received (inbound webhook secret not set), so follow-ups will not stop when someone answers.", "Set INBOUND_WEBHOOK_SECRET and point your provider's inbound-parse webhook at /api/inbound.");
 
+  // Mailbox verification (contact finder)
+  if (env.SMTP_VERIFY === "on") {
+    const host = (() => { try { return new URL(env.APP_BASE_URL || "http://localhost").hostname; } catch { return "localhost"; } })();
+    if (!has("SMTP_VERIFY_HELO") && /localhost|127\.0\.0\.1/.test(host)) add("warn", "SMTP_VERIFY_HELO", "Mailbox verification would introduce itself as localhost, which many mail servers reject.", "Set SMTP_VERIFY_HELO (and SMTP_VERIFY_FROM) to a domain you own.");
+    add("info", "SMTP_VERIFY", "Mailbox verification needs outbound port 25, which most cloud hosts block.", "Run the Connection test; if port 25 is blocked, turn SMTP_VERIFY off and guessed addresses stay unverified.");
+  }
   // Search
   try { searcherFromEnv(env); } catch (e) { add("error", "SEARCH_PROVIDER", (e as Error).message, "Set the matching search key or SEARCH_PROVIDER=off."); }
   if (!detectSearchProvider(env)) add("info", "SEARCH", "No web-search key: research can only use websites already known for a lead.", "Add BRAVE_API_KEY, TAVILY_API_KEY, SERPER_API_KEY or SERPAPI_API_KEY for automatic website discovery.");

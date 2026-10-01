@@ -4,7 +4,7 @@ import { api, useAction } from "./useApi";
 
 export interface S {
   senderName: string; senderEmail: string; companyName: string; physicalAddress: string; dailySendCap: number;
-  sendWindowStartHour: number; sendWindowEndHour: number; timezone: string; sendOnWeekends: boolean; trackOpens: boolean; followupDays: number[]; autoApprove: boolean; offer: string;
+  sendWindowStartHour: number; sendWindowEndHour: number; timezone: string; sendOnWeekends: boolean; trackOpens: boolean; allowGuessedEmails: boolean; followupDays: number[]; autoApprove: boolean; offer: string;
 }
 
 export function SettingsForm({ initial }: { initial: S }) {
@@ -38,6 +38,10 @@ export function SettingsForm({ initial }: { initial: S }) {
       <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontWeight: 400, color: "var(--text)", marginBottom: 14 }}>
         <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={s.autoApprove} onChange={(e) => set("autoApprove", e.target.checked)} />
         <span><strong>Auto-approve drafts</strong> (skip human review; sends still obey window, cap and suppression). Leave off until you trust the drafts.</span>
+      </label>
+      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontWeight: 400, color: "var(--text)", marginBottom: 14 }}>
+        <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={s.allowGuessedEmails} onChange={(e) => set("allowGuessedEmails", e.target.checked)} />
+        <span><strong>Also email guessed addresses that could not be verified</strong>. By default, addresses the contact finder guessed from a name pattern are only used once the mailbox is confirmed to exist. Turning this on uses unverified and catch-all guesses too, which raises your bounce rate and can hurt your sender reputation.</span>
       </label>
       <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontWeight: 400, color: "var(--text)", marginBottom: 14 }}>
         <input type="checkbox" style={{ width: "auto", marginTop: 3 }} checked={s.trackOpens} onChange={(e) => set("trackOpens", e.target.checked)} />

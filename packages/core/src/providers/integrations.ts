@@ -11,6 +11,7 @@ export function integrationStatus(env: Env = process.env) {
     email: detectEmailProvider(env),
     search: detectSearchProvider(env),
     inbound: !!env.INBOUND_WEBHOOK_SECRET,
+    verify: env.SMTP_VERIFY === "on",
     deliversEmail: detectEmailProvider(env) !== "dry-run",
   };
 }
