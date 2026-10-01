@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
-    "nodemailer": "^6.9.0",
+    "nodemailer": "^10.0.13",
     "pg": "^8.12.0",
     "zod": "^3.23.0"
   },
@@ -25,7 +25,7 @@
     "@sendgrid/eventwebhook": "^8.0.0",
     "@sendgrid/mail": "^8.1.6",
     "@types/node": "^22.0.0",
-    "@types/nodemailer": "^6.4.0",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.11.0",
     "openai": "^7.25.0",
     "postmark": "^5.1.0",

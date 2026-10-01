@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { postJson, type PostOptions } from "./http";
 import { hintFor } from "./hints";
 
@@ -42,7 +42,7 @@ export class DryRunMailer implements Mailer {
 
 export class SmtpMailer implements Mailer {
   readonly name = "smtp";
-  private transport: nodemailer.Transporter;
+  private transport: Transporter;
   constructor(url: string) {
     this.transport = nodemailer.createTransport(url);
   }
