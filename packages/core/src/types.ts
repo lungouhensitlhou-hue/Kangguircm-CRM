@@ -42,6 +42,7 @@ export interface Organization {
   website: string | null;
   ehr: string | null;
   size_estimate: string | null;
+  aliases: string[];
   source: string;
 }
 

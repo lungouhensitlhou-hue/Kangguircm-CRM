@@ -218,7 +218,7 @@ describe("outreach → approval → send pipeline", () => {
     expect(deps.mailer.outbox).toHaveLength(0);
     const run = (await queryOne<any>("SELECT * FROM agent_runs WHERE kind='send'"))!;
     expect(run.status).toBe("queued");
-    expect(new Date(run.run_at).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(run.run_at).getTime()).toBeGreaterThan(night().getTime()); // rescheduled relative to the injected clock
     expect(run.attempts).toBe(0);
     // cap: pretend one message was already sent in the last 24h
     await query("UPDATE agent_runs SET run_at = now() WHERE id = $1", [run.id]);

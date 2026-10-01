@@ -20,7 +20,7 @@ const fixtures = http.createServer((req, res) => {
   if (u.pathname === "/nppes/") {
     const state = u.searchParams.get("state");
     const results = state === "TX" ? [
-      { number: "1900000001", enumeration_type: "NPI-2", basic: { organization_name: "E2E ORTHOPEDIC ASSOCIATES" }, addresses: [{ address_purpose: "LOCATION", address_1: "1 Test Way", city: "AUSTIN", state: "TX", postal_code: "78701" }], taxonomies: [{ desc: "Orthopaedic Surgery", primary: true }] },
+      { number: "1900000001", enumeration_type: "NPI-2", basic: { organization_name: "E2E ORTHOPEDIC ASSOCIATES", authorized_official_first_name: "SAM", authorized_official_last_name: "OWNER", authorized_official_title_or_position: "OWNER", authorized_official_telephone_number: "5125550123" }, addresses: [{ address_purpose: "LOCATION", address_1: "1 Test Way", city: "AUSTIN", state: "TX", postal_code: "78701" }], taxonomies: [{ desc: "Orthopaedic Surgery", primary: true }] },
       { number: "1900000002", enumeration_type: "NPI-2", basic: { organization_name: "E2E HEART CLINIC" }, addresses: [{ address_purpose: "LOCATION", address_1: "2 Test Way", city: "DALLAS", state: "TX", postal_code: "75201" }], taxonomies: [{ desc: "Cardiology", primary: true }] },
     ] : [];
     res.writeHead(200, { "content-type": "application/json" });

@@ -9,6 +9,8 @@ export const DiscoverInput = z.object({
   taxonomy: z.string().optional(),
   type: z.enum(["NPI-1", "NPI-2"]).default("NPI-2"),
   limit: z.number().int().min(1).max(1000).default(50),
+  /** Only keep organizations whose PRIMARY specialty matches (the registry also matches secondary taxonomies). */
+  primaryOnly: z.boolean().default(true),
   autoResearch: z.boolean().default(false),
   researchTop: z.number().int().min(0).max(200).default(25),
 }).refine((v) => !!(v.taxonomy?.trim() || v.city?.trim()), {
@@ -30,17 +32,19 @@ export const discoverHandler: Handler = async (ctx) => {
     while (got < want) {
       await ctx.checkCancelled();
       const page = Math.min(200, want - got);
-      const results = await ctx.deps.npi.search({ state, city: inp.city, taxonomy: inp.taxonomy, type: inp.type, limit: page, skip });
-      await ctx.tool("npi.search", { state, taxonomy: inp.taxonomy, skip, limit: page }, { returned: results.length });
+      const q = { state, city: inp.city, taxonomy: inp.taxonomy, type: inp.type, limit: page, skip, primaryOnly: inp.primaryOnly };
+      const pg = ctx.deps.npi.searchPage ? await ctx.deps.npi.searchPage(q) : await ctx.deps.npi.search(q).then((items) => ({ items, raw: items.length }));
+      const results = pg.items;
+      await ctx.tool("npi.search", { state, taxonomy: inp.taxonomy, skip, limit: page }, { returned: pg.raw, kept: results.length });
       fetched += results.length;
       for (const org of results) {
         const r = await upsertLead(org);
         if (r.created) { created++; newLeadIds.push(r.leadId); } else existing++;
       }
-      got += results.length;
+      got += pg.raw;
       skip += page;
       await ctx.progress(`${state ?? "all states"}: ${got}/${want} scanned, ${created} new leads`);
-      if (results.length < page) break;
+      if (pg.raw < page) break;
     }
   }
 

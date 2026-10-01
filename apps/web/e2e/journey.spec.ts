@@ -55,6 +55,7 @@ test("discovery agent: registry search runs on the worker and streams live progr
   await page.getByLabel("Specialty / taxonomy").fill("Orthopedic");
   await page.getByLabel("Limit").fill("5");
   await page.getByLabel(/Automatically research/).uncheck();
+  await page.getByLabel(/Primary specialty only/).uncheck(); // the fake registry returns a cardiology clinic for this search
   await page.getByRole("button", { name: "Start discovery run" }).click();
   await expect(page).toHaveURL(/\/runs\/[0-9a-f-]{36}$/);
   await expect(page.getByTestId("run-status")).toHaveText("succeeded", { timeout: 30_000 });
@@ -63,6 +64,11 @@ test("discovery agent: registry search runs on the worker and streams live progr
   await page.goto("/leads");
   await expect(page.getByRole("link", { name: "E2e Orthopedic Associates" })).toBeVisible();
   await expect(page.getByRole("link", { name: "E2e Heart Clinic" })).toBeVisible();
+  // the registry's authorized official arrives as a decision-maker contact, with phone
+  await page.getByRole("link", { name: "E2e Orthopedic Associates" }).click();
+  await expect(page.getByText("Sam Owner")).toBeVisible();
+  await expect(page.locator(".badge.ok", { hasText: "decision maker" })).toBeVisible();
+  await page.goto("/leads");
   await page.getByLabel("Search", { exact: true }).fill("heart");
   await page.getByRole("button", { name: "Filter" }).click();
   await expect(page.getByRole("link", { name: "E2e Orthopedic Associates" })).toHaveCount(0);

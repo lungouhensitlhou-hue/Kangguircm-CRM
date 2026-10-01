@@ -20,6 +20,10 @@ export interface NewOrg {
   phone?: string | null;
   website?: string | null;
   source?: string;
+  /** Authorized official from the registry; stored as a decision-maker contact. */
+  /** Other names the organization trades under (DBA), useful for finding its website. */
+  aliases?: string[];
+  official?: { name: string; title: string | null; phone: string | null; credential: string | null };
 }
 
 const clean = (v: unknown): string | null => {
@@ -47,7 +51,7 @@ export async function upsertLead(o: NewOrg): Promise<{ leadId: string; organizat
   const npi = clean(o.npi);
   const city = clean(o.city);
   const state = clean(o.state)?.toUpperCase() ?? null;
-  return tx(async (c) => {
+  const out = await tx(async (c) => {
     let org = npi ? (await c.query("SELECT id FROM organizations WHERE npi = $1", [npi])).rows[0] : undefined;
     if (!org) {
       org = (
@@ -61,9 +65,9 @@ export async function upsertLead(o: NewOrg): Promise<{ leadId: string; organizat
     if (!org) {
       org = (
         await c.query(
-          `INSERT INTO organizations (npi, name, entity_type, specialty, address, city, state, zip, phone, website, source)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-          [npi, name, o.entity_type ?? "organization", clean(o.specialty), clean(o.address), city, state, clean(o.zip), clean(o.phone), normalizeWebsite(o.website), o.source ?? "manual"],
+          `INSERT INTO organizations (npi, name, entity_type, specialty, address, city, state, zip, phone, website, source, aliases)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+          [npi, name, o.entity_type ?? "organization", clean(o.specialty), clean(o.address), city, state, clean(o.zip), clean(o.phone), normalizeWebsite(o.website), o.source ?? "manual", o.aliases ?? []],
         )
       ).rows[0];
       created = true;
@@ -75,6 +79,18 @@ export async function upsertLead(o: NewOrg): Promise<{ leadId: string; organizat
     }
     return { leadId: lead.id as string, organizationId: org.id as string, created };
   });
+  if (o.official) await addOfficialContact(out.organizationId, o.official);
+  return out;
+}
+
+/** Idempotent: registry officials have no email, so the upsert key is the name. */
+export async function addOfficialContact(orgId: string, official: NonNullable<NewOrg["official"]>): Promise<void> {
+  const exists = await queryOne("SELECT 1 FROM contacts WHERE organization_id = $1 AND lower(full_name) = lower($2)", [orgId, official.name]);
+  if (exists) return;
+  await query(
+    "INSERT INTO contacts (organization_id, full_name, title, phone, is_decision_maker, source) VALUES ($1,$2,$3,$4,true,'nppes')",
+    [orgId, official.name, official.title, official.phone],
+  );
 }
 
 export interface LeadFilter {

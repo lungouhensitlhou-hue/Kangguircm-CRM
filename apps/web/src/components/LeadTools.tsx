@@ -10,10 +10,11 @@ export function DiscoverPanel() {
   const [taxonomy, setTaxonomy] = useState("");
   const [limit, setLimit] = useState(50);
   const [auto, setAuto] = useState(true);
+  const [primaryOnly, setPrimaryOnly] = useState(true);
   return (
     <form className="card" onSubmit={async (e) => {
       e.preventDefault();
-      const r = await a.run(() => api<{ runId: string }>("/api/discover", "POST", { states: states.split(/[ ,]+/).filter(Boolean).map((s) => s.toUpperCase()), taxonomy: taxonomy || undefined, limit: Number(limit), autoResearch: auto }));
+      const r = await a.run(() => api<{ runId: string }>("/api/discover", "POST", { states: states.split(/[ ,]+/).filter(Boolean).map((s) => s.toUpperCase()), taxonomy: taxonomy || undefined, limit: Number(limit), autoResearch: auto, primaryOnly }));
       if (r) router.push(`/runs/${r.runId}`);
     }}>
       <h2>Discover facilities (NPPES registry)</h2>
@@ -24,6 +25,7 @@ export function DiscoverPanel() {
         <div className="field fit" style={{ maxWidth: 100 }}><label htmlFor="d-limit">Limit</label><input id="d-limit" type="number" min={1} max={1000} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
       </div>
       <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 400, marginBottom: 12 }}><input type="checkbox" style={{ width: "auto" }} checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Automatically research the top 25 new leads</label>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 400, marginBottom: 12 }}><input type="checkbox" style={{ width: "auto" }} checked={primaryOnly} onChange={(e) => setPrimaryOnly(e.target.checked)} /> Primary specialty only (the registry also matches secondary specialties)</label>
       <button className="primary" disabled={a.busy}>{a.busy ? "Starting…" : "Start discovery run"}</button>
     </form>
   );
