@@ -8,7 +8,14 @@ export interface TaskItem { id: string; title: string; kind: string; due_at: str
 export function TaskList({ tasks, empty = "Nothing here." }: { tasks: TaskItem[]; empty?: string }) {
   const a = useAction();
   const upd = (id: string, patch: object) => a.run(() => api(`/api/tasks/${id}`, "PATCH", patch));
-  const due = (d: string) => { const t = new Date(d); const days = Math.floor((t.getTime() - Date.now()) / 86400_000); return days < 0 ? `${-days}d overdue` : t.toDateString() === new Date().toDateString() ? "today" : `in ${days + 1}d`; };
+  // Calendar-day based, so something due a moment ago is "today", not "1d overdue".
+  const due = (d: string) => {
+    const t = new Date(d), start = new Date(); start.setHours(0, 0, 0, 0);
+    const day = 86400_000;
+    if (t.getTime() < start.getTime()) return `${Math.ceil((start.getTime() - t.getTime()) / day)}d overdue`;
+    if (t.getTime() < start.getTime() + day) return "today";
+    return `in ${Math.floor((t.getTime() - start.getTime()) / day)}d`;
+  };
   return (
     <div>
       {a.error && <div className="notice err" role="alert">{a.error}</div>}
