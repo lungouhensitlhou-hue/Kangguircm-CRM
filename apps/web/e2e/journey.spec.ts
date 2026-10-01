@@ -396,3 +396,25 @@ test("templates, sequences, tags, saved views and export", async ({ page }) => {
   expect(text).not.toContain("E2e Orthopedic");
   expect((await page.context().request.get("/api/export/leads", { headers: { cookie: "" } })).status()).toBe(401);
 });
+
+test("reports and activity timeline", async ({ page }) => {
+  await login(page);
+  await page.goto("/reports");
+  const f = page.getByTestId("funnel");
+  await expect(f).toContainText("Leads");
+  await expect(f.locator("div", { hasText: /^Emailed/ }).first()).toBeVisible();
+  await expect(f).toContainText("Positive reply");
+  await page.getByRole("link", { name: "Sequence step" }).click();
+  const row = page.getByTestId("outreach-table").locator("tr", { hasText: "Step 1" });
+  await expect(row).toContainText("few sends"); // honest about small samples
+  await expect(row.locator("td").nth(1)).not.toHaveText("0");
+  await page.getByRole("link", { name: "All time" }).click();
+  await expect(page.getByTestId("outreach-table")).toContainText("Step 1");
+
+  await page.goto("/leads?q=Riverside");
+  await page.getByRole("link", { name: "Riverside Orthopedics" }).first().click();
+  const tl = page.getByTestId("timeline");
+  await expect(tl).toContainText("Email step 1 sent");
+  await expect(tl).toContainText("Reply received (interested)");
+  await expect(tl).toContainText("Agent: research succeeded");
+});

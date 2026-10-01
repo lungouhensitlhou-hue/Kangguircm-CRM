@@ -19,6 +19,9 @@ Do these in order. The app checks most of them for you: **Settings → Connectio
 - **Email:** Resend / SendGrid / Postmark / Mailgun key (or `SMTP_URL`). Verify the **sending domain** at the provider and set SPF/DKIM/DMARC. Use an address on that domain as "Sender email" in Settings.
 - **Search (optional):** Brave / Tavily / Serper / SerpAPI.
 
+## 3b. Contact finder (optional mailbox verification)
+Works out of the box using the registry's authorized official and published emails. Guessed addresses stay **unverified and unused** until verified. To verify them set `SMTP_VERIFY=on`, `SMTP_VERIFY_HELO` and `SMTP_VERIFY_FROM` (a domain you own). This needs **outbound port 25**, which AWS/GCP/Azure block by default: the Connection test reports it. Use a host that allows it, or leave it off.
+
 ## 4. Webhooks (so bounces, complaints and replies are handled)
 - Delivery/bounce/complaint: provider dashboard → webhook URL `APP_BASE_URL/api/webhooks/email/<provider>` and set that provider's secret variable (see `.env.example`).
 - Replies: point your inbound-parse hook at `APP_BASE_URL/api/inbound` with header `x-webhook-secret: $INBOUND_WEBHOOK_SECRET`.

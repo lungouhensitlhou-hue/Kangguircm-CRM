@@ -47,8 +47,18 @@ See **[DEPLOY.md](DEPLOY.md)** for the production checklist and a table of commo
 | **outreach** | Picks the best reachable, non-suppressed contact, drafts with the AI model (or a template if no key / invalid draft), shows it examples of past emails that earned replies (same specialty first), has a **critic pass** score and rewrite weak drafts, validates (no placeholders, links, guarantees, own unsubscribe text), appends the compliance footer, queues for approval. |
 | **send** | Rechecks suppression, sender identity, send window (timezone, weekdays), daily cap; sends with RFC 8058 `List-Unsubscribe` headers; moves the lead to *Contacted*. |
 | **reply** | Runs on every inbound reply: classifies it (interested, question, referral, not now, not interested, out of office), updates the pipeline (not interested → Lost, not now → check back in 90 days), adds referred people as contacts (address must literally appear in the reply), and drafts a response into Approvals. Out-of-office auto-replies are logged without stopping the sequence. |
+| **contacts** | In-house contact finder (the "Apollo" part, no credits): takes the registry's **authorized official** (a named owner/officer with phone), finds the practice website (search, then guessed domains verified by name/city/phone), learns the domain's address pattern from published emails, builds candidate addresses and, when `SMTP_VERIFY=on`, checks the mailbox with the recipient's mail server without sending anything. Guessed addresses are labelled with source and confidence and are **never emailed unless verified** (or you opt in). |
 | **sweep** | Every minute: reclaims dead runs, re-queues approved sends, drafts due follow-ups (default day 3 and 7, stops on reply). |
 | **chat** | Tool-use loop over the CRM (search, inspect, stats, replies, start discovery/research/draft, move stage, notes). **It has no send tool.** Without any AI key a rule-based command interpreter handles `stats`, `find`, `research`, `draft`, `discover`, `approvals`. |
+
+## CRM tools (the "Zoho" part, built in)
+
+- **Tasks:** to-dos with due dates; replies, not-now answers and leads with no reachable contact create them automatically. Overdue/today/upcoming views and a nav badge.
+- **Deals:** moving a lead to *Meeting* opens a deal; Won/Lost close it and move the lead. Pipeline value, win rate, days to win.
+- **Templates & sequences:** merge-field templates (`{{first_name|there}}`), multi-step sequences with per-step delays, A/B variants, per-lead enrollment and pause/resume. A step without a template is AI-written.
+- **Tags, saved views, CSV export** (spreadsheet-formula-safe).
+- **Reports:** funnel, reply rates by specialty / template / step / state with 95% ranges and "few sends" warnings, time to reply, AI cost per positive reply and per deal, weekly trend.
+- **Activity timeline** per lead: emails, replies, stage changes, tasks, deals, agent runs, delivery events.
 
 ## Safety and compliance built in
 
@@ -71,8 +81,8 @@ apps/worker     worker process (claim loops + minute sweep)
 
 ```bash
 npm run typecheck
-npm test            # 156 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
-npm run build && npm run test:e2e   # 9 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
+npm test            # 226 tests against a real Postgres (TEST_DATABASE_URL, default rcm_test)
+npm run build && npm run test:e2e   # 13 browser tests: boots fake registry + fake practice site + fake OpenAI-format provider + worker + built app
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above against a Postgres service.

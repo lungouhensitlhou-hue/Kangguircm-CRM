@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STAGE_LABELS } from "@rcm/core/types";
-import { getContacts, getLead, listDeals, listSequences, listTasks, query, queryOne, isSuppressed } from "@rcm/core";
+import { getContacts, getLead, leadTimeline, listDeals, listSequences, listTasks, query, queryOne, isSuppressed } from "@rcm/core";
+import { Timeline } from "@/components/Timeline";
 import { LeadSequence } from "@/components/LeadSequence";
 import { AddTask, TaskList } from "@/components/TaskList";
 import { CreateDeal, DealEditor } from "@/components/DealEditor";
@@ -15,6 +16,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const lead = await getLead(id);
   if (!lead) notFound();
+  const timeline = await leadTimeline(lead.id, 40);
   const [leadTasks, leadDeals, sequences] = await Promise.all([listTasks({ leadId: lead.id, bucket: "all" }), listDeals({ leadId: lead.id }), listSequences()]);
   const [contacts, profile, messages, runs] = await Promise.all([
     getContacts(lead.organization_id),
@@ -110,6 +112,10 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
               </div>
             ))}
             {messages.some((m: any) => m.status === "draft") && <Link className="btn" href="/approvals">Review drafts →</Link>}
+          </div>
+          <div className="card">
+            <h2>Activity</h2>
+            <Timeline items={timeline} />
           </div>
           <div className="card">
             <h2>Agent runs</h2>

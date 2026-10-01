@@ -35,3 +35,4 @@ export * from "./tasks";
 export * from "./deals";
 export * from "./templates";
 export * from "./sequences";
+export * from "./reports";
